@@ -631,12 +631,25 @@ async function editFolder(id) {
   // Botão Colar
   $("cfgPaste").onclick = async () => {
     try {
-      const text = await navigator.clipboard.readText();
-      inp.value = text.trim();
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        inp.value = text.trim();
+      } else {
+        // Fallback: criar campo temporário para colar
+        const tmp = document.createElement("textarea");
+        tmp.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+        document.body.appendChild(tmp);
+        tmp.focus();
+        document.execCommand("paste");
+        if (tmp.value) inp.value = tmp.value.trim();
+        document.body.removeChild(tmp);
+      }
       inp.focus();
     } catch {
+      // Se nenhum método funcionar, foca no campo para colar manualmente
+      inp.value = "";
       inp.focus();
-      document.execCommand("paste");
+      inp.placeholder = "Use Ctrl+V ou segure aqui para colar";
     }
   };
 
@@ -681,15 +694,9 @@ async function editFolder(id) {
   await AISStore.init();
   if (AISStore.isServer()) {
     $("modeDot").className = "dot server";
-    $("modeText").textContent = "Servidor conectado";
-    let ok = AISStore.hasToken() ? await AISStore.checkAuth() : false;
-    while (!ok) {
-      const t = prompt("Token de acesso do servidor A.I.S.:");
-      if (t === null) break;
-      AISStore.setToken(t.trim());
-      ok = await AISStore.checkAuth();
-      if (!ok) alert("Token inválido.");
-    }
+    const ok = AISStore.hasToken() ? await AISStore.checkAuth() : false;
+    $("modeText").textContent = ok ? "Servidor conectado" : "Token necessário";
+    if (!ok) $("modeDot").className = "dot local";
   }
   renderOverview();
 })();
