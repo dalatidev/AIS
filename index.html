@@ -214,6 +214,23 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
 @media(max-width:520px){
   .metric{padding:14px}.metric .value{font-size:22px}
 }
+
+/* Configurações */
+.cfg-section{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);padding:22px}
+.cfg-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.cfg-header h3{font-size:16px;font-weight:700}
+.cfg-desc{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5}
+.cfg-token-wrap{display:flex;flex-direction:column;gap:10px}
+.cfg-token-field{display:flex;align-items:center;gap:0;background:var(--surface-2);border:1px solid var(--line-soft);border-radius:9px;overflow:hidden;transition:border-color .14s}
+.cfg-token-field:focus-within{border-color:var(--blue)}
+.cfg-token-field input{flex:1;min-width:0;padding:11px 14px;background:none;border:none;outline:none;color:var(--white);font-family:monospace;font-size:13.5px;letter-spacing:.03em}
+.cfg-token-field input::placeholder{color:var(--muted-2);font-family:var(--font);letter-spacing:0}
+.cfg-toggle-vis{width:42px;height:42px;display:grid;place-items:center;background:none;border:none;border-left:1px solid var(--line-soft);color:var(--muted);cursor:pointer;transition:color .14s}
+.cfg-toggle-vis:hover{color:var(--white)}
+.cfg-toggle-vis svg{width:16px;height:16px}
+.cfg-token-actions{display:flex;gap:8px}
+.cfg-token-status{margin-top:10px;font-size:12.5px;font-weight:600;min-height:20px}
+.cfg-token-status.ok{color:var(--green)}.cfg-token-status.err{color:var(--red)}.cfg-token-status.loading{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -317,7 +334,32 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
         <div class="grid" id="credGrid"></div>
       </div>
       <div id="tabDocumentacao" style="display:none"><div class="empty" style="max-width:520px;margin:0 auto"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg></div><h2>Documentação</h2><p>Bem-vindo ao A.I.S. — sua plataforma de automação. Consulte o README do projeto para o guia completo ou o TERMUX.md para configurar seu servidor local.</p></div></div>
-      <div id="tabConfiguracoes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6"/></svg></div><h2>Configurações</h2><p>Preferências do sistema, gerenciamento de token e configurações avançadas — em breve.</p></div></div>
+      <div id="tabConfiguracoes" style="display:none">
+        <div style="max-width:520px">
+          <!-- Token de servidor -->
+          <div class="cfg-section">
+            <div class="cfg-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <h3>Token de servidor</h3>
+            </div>
+            <p class="cfg-desc">Cole o token exibido no terminal do Termux para conectar ao servidor local.</p>
+            <div class="cfg-token-wrap">
+              <div class="cfg-token-field">
+                <input id="cfgToken" type="password" placeholder="Cole o token aqui..." autocomplete="off" spellcheck="false"/>
+                <button class="cfg-toggle-vis" id="cfgToggleVis" title="Mostrar/ocultar">
+                  <svg id="cfgEyeOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  <svg id="cfgEyeOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="cfg-token-actions">
+                <button class="btn sm" id="cfgPaste"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Colar</button>
+                <button class="btn sm primary" id="cfgConnect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Conectar</button>
+              </div>
+            </div>
+            <div id="cfgTokenStatus" class="cfg-token-status"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
