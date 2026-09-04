@@ -274,6 +274,12 @@ async function handleApi(req, res, url) {
     return json(res, 200, all.slice(0, 100));
   }
 
+  // DELETE /api/all-executions  -> limpar todas as execuções
+  if (parts[1] === "all-executions" && req.method === "DELETE") {
+    executions.clear();
+    return json(res, 200, { ok: true });
+  }
+
   // POST /api/execute/:id  -> executa o fluxo manualmente
   if (req.method === "POST" && parts[1] === "execute" && parts.length === 3) {
     const id = parts[2];
@@ -298,6 +304,16 @@ async function handleApi(req, res, url) {
       id:e.id, status:e.status, startedAt:e.startedAt, finishedAt:e.finishedAt,
       stepCount:(e.steps||[]).length, error:e.error||null
     })));
+  }
+
+  // DELETE /api/executions/:flowId/:execId  -> deletar uma execução
+  if (req.method === "DELETE" && parts[1] === "executions" && parts.length === 4) {
+    const list = executions.get(parts[2]) || [];
+    const idx = list.findIndex(e => e.id === parts[3]);
+    if (idx === -1) return json(res, 404, { error: "Execução não encontrada." });
+    list.splice(idx, 1);
+    executions.set(parts[2], list);
+    return json(res, 200, { ok: true });
   }
 
   // GET /api/executions/:flowId/:execId  -> detalhes de uma execução
