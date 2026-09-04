@@ -153,15 +153,21 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
 .card-basic .desc{font-size:12px;color:var(--muted);margin-bottom:10px}
 
 /* Execuções */
-.exec-row{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:10px;background:var(--surface);border:1px solid var(--line-soft);cursor:pointer;transition:border-color .14s;margin-bottom:6px}
+.exec-row{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:10px;background:var(--surface);border:1px solid var(--line-soft);transition:border-color .14s;margin-bottom:6px}
 .exec-row:hover{border-color:#33436a}
+.exec-row.selected{border-color:var(--blue);background:rgba(47,123,255,.06)}
+.exec-check{width:16px;height:16px;accent-color:var(--blue);cursor:pointer;flex:0 0 auto}
 .exec-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .exec-dot.ok{background:var(--green)}.exec-dot.err{background:var(--red)}
 .exec-info{flex:1;min-width:0}.exec-info b{font-size:13.5px;font-weight:600;display:block}
 .exec-info span{font-size:11.5px;color:var(--muted)}
-.exec-badge{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:5px}
+.exec-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}
+.exec-meta span{font-size:11px;color:var(--muted-2)}
+.exec-meta .sep{width:3px;height:3px;border-radius:50%;background:var(--muted-2)}
+.exec-badge{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:5px;white-space:nowrap}
 .exec-badge.ok{background:rgba(62,207,142,.12);color:var(--green)}
 .exec-badge.err{background:rgba(255,90,106,.12);color:var(--red)}
+.exec-id{font-size:10.5px;color:var(--muted-2);font-family:monospace}
 
 /* Credenciais */
 .cred-card{display:flex;align-items:center;gap:12px;padding:14px;background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);transition:border-color .14s}
@@ -272,7 +278,12 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
 
         <!-- SUB: EXECS -->
         <div id="subExecs" style="display:none">
-          <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchExecs" type="text" placeholder="Procurar por fluxo..."/></div><select class="sel" id="filterExecStatus"><option value="all">Todos</option><option value="success">Sucesso</option><option value="error">Erro</option></select></div>
+          <div class="toolbar">
+            <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchExecs" type="text" placeholder="Procurar por fluxo..."/></div>
+            <select class="sel" id="filterExecStatus"><option value="all">Todos</option><option value="success">Sucesso</option><option value="error">Erro</option></select>
+            <button class="btn sm danger" id="btnDeleteSelExecs" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir selecionados</button>
+            <button class="btn sm danger" id="btnClearExecs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Limpar tudo</button>
+          </div>
           <div id="execList"></div>
         </div>
       </div>
