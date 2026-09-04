@@ -409,6 +409,14 @@ async function editCred(id) {
 }
 
 /* ===== EXECS ===== */
+const selectedExecs = new Set();
+
+function updateDeleteBtn() {
+  const btn = $("btnDeleteSelExecs");
+  btn.style.display = selectedExecs.size > 0 ? "" : "none";
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir (${selectedExecs.size})`;
+}
+
 async function renderExecs() {
   allExecs = await AISStore.listAllExecutions();
   let list = allExecs.slice();
@@ -416,24 +424,62 @@ async function renderExecs() {
   if (q) list = list.filter(e => (e.flowName || "").toLowerCase().includes(q));
   if (state.execStatus !== "all") list = list.filter(e => e.status === state.execStatus);
   const el = $("execList");
+  selectedExecs.clear();
+  updateDeleteBtn();
   if (!list.length) {
     el.innerHTML = `<div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></div><h2>Nenhuma execução</h2><p>${AISStore.isServer()?"Execute um fluxo para ver o histórico aqui.":"Execuções ficam salvas no servidor (Termux)."}</p></div>`;
     return;
   }
   el.innerHTML = "";
   list.forEach(e => {
-    const t = new Date(e.startedAt).toLocaleString("pt-BR");
+    const dt = new Date(e.startedAt);
+    const dateStr = dt.toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric" });
+    const timeStr = dt.toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit", second:"2-digit" });
     const dur = e.finishedAt ? (e.finishedAt - e.startedAt) + " ms" : "...";
     const ok = e.status === "success";
     const row = document.createElement("div"); row.className = "exec-row";
-    row.innerHTML = `<div class="exec-dot ${ok?"ok":"err"}"></div><div class="exec-info"><b></b><span>${t} · ${dur} · ${e.stepCount||0} nós</span></div><span class="exec-badge ${ok?"ok":"err"}">${ok?"Sucesso":"Erro"}</span>`;
+    row.innerHTML = `
+      <input type="checkbox" class="exec-check" data-eid="${esc(e.id)}" data-fid="${esc(e.flowId)}"/>
+      <div class="exec-dot ${ok?"ok":"err"}"></div>
+      <div class="exec-info">
+        <b></b>
+        <div class="exec-meta">
+          <span>${dateStr} ${timeStr}</span><span class="sep"></span>
+          <span>${dur}</span><span class="sep"></span>
+          <span>${e.stepCount||0} nós</span>
+        </div>
+        <span class="exec-id">${esc(e.id)}</span>
+      </div>
+      <span class="exec-badge ${ok?"ok":"err"}">${ok?"Sucesso":"Erro"}</span>`;
     row.querySelector("b").textContent = e.flowName || "—";
-    row.onclick = () => location.href = `editor.html?id=${e.flowId}`;
+    const cb = row.querySelector(".exec-check");
+    cb.onclick = (ev) => ev.stopPropagation();
+    cb.onchange = () => {
+      if (cb.checked) { selectedExecs.add(e.id + "|" + e.flowId); row.classList.add("selected"); }
+      else { selectedExecs.delete(e.id + "|" + e.flowId); row.classList.remove("selected"); }
+      updateDeleteBtn();
+    };
     el.appendChild(row);
   });
 }
 $("searchExecs").oninput      = e => { state.execQ = e.target.value.trim(); renderExecs(); };
 $("filterExecStatus").onchange = e => { state.execStatus = e.target.value; renderExecs(); };
+$("btnDeleteSelExecs").onclick = async () => {
+  if (!selectedExecs.size) return;
+  if (!confirm(`Excluir ${selectedExecs.size} execução(ões)?`)) return;
+  for (const key of selectedExecs) {
+    const [execId, flowId] = key.split("|");
+    await AISStore.deleteExecution(flowId, execId);
+  }
+  selectedExecs.clear();
+  renderExecs();
+};
+$("btnClearExecs").onclick = async () => {
+  if (!confirm("Limpar TODAS as execuções? Essa ação não pode ser desfeita.")) return;
+  await AISStore.clearAllExecutions();
+  selectedExecs.clear();
+  renderExecs();
+};
 
 /* ===== FOLDERS ===== */
 async function renderFolders() {
