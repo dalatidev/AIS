@@ -40,17 +40,15 @@ function fmtDate(ts) {
 /* ===== Sidebar navigation ===== */
 const TITLES = {
   overview:      ["Visão geral",  "Gerencie seus fluxos de trabalho, automações e recursos do A.I.S."],
-  pessoal:       ["Pessoal",      "Perfil e preferências da sua conta."],
-  chat:          ["Bate-papo",    "Converse com a IA para criar e depurar fluxos."],
-  agentes:       ["Agentes",      "Agentes autônomos que usam seus fluxos como ferramentas."],
-  automacoes:    ["Automações",   "Fluxos de trabalho automatizados."],
+  pastas:        ["Pastas",       "Organize seus fluxos por projeto ou cliente."],
+  credenciais:   ["Credenciais",  "Gerencie chaves de API, tokens e autenticações."],
   modelos:       ["Modelos",      "Modelos prontos para começar rapidamente."],
   integracoes:   ["Integrações",  "Conecte serviços externos."],
   ajuda:         ["Ajuda",        "Guias e recursos do A.I.S."],
   configuracoes: ["Configurações","Preferências do sistema."],
 };
 
-const TAB_IDS = ["overview","pessoal","chat","agentes","automacoes","modelos","integracoes","ajuda","configuracoes"];
+const TAB_IDS = ["overview","pastas","credenciais","modelos","integracoes","ajuda","configuracoes"];
 document.querySelectorAll(".sb-item").forEach(it => it.onclick = () => {
   document.querySelectorAll(".sb-item").forEach(x => x.classList.remove("active"));
   it.classList.add("active");
@@ -59,6 +57,25 @@ document.querySelectorAll(".sb-item").forEach(it => it.onclick = () => {
     const el = $("tab" + t[0].toUpperCase() + t.slice(1));
     if (el) el.style.display = "none";
   });
+  // Pastas e Credenciais são tabs próprias com conteúdo independente
+  if (currentTab === "pastas") {
+    const active = $("tabPastas");
+    if (active) active.style.display = "";
+    $("pageTitle").textContent = TITLES[currentTab][0];
+    $("pageSub").textContent   = TITLES[currentTab][1];
+    closeSidebar();
+    loadAll().then(() => renderFolders());
+    return;
+  }
+  if (currentTab === "credenciais") {
+    const active = $("tabCredenciais");
+    if (active) active.style.display = "";
+    $("pageTitle").textContent = TITLES[currentTab][0];
+    $("pageSub").textContent   = TITLES[currentTab][1];
+    closeSidebar();
+    renderCreds();
+    return;
+  }
   const active = $("tab" + currentTab[0].toUpperCase() + currentTab.slice(1));
   if (active) active.style.display = "";
   $("pageTitle").textContent = TITLES[currentTab][0];
@@ -72,16 +89,14 @@ document.querySelectorAll("#subtabs .tab").forEach(t => t.onclick = () => {
   document.querySelectorAll("#subtabs .tab").forEach(x => x.classList.remove("active"));
   t.classList.add("active");
   currentSub = t.dataset.sub;
-  ["flows","creds","execs","vars","tables","folders"].forEach(s => {
+  ["flows","execs"].forEach(s => {
     const el = $("sub" + s[0].toUpperCase() + s.slice(1));
     if (el) el.style.display = "none";
   });
   const el = $("sub" + currentSub[0].toUpperCase() + currentSub.slice(1));
   if (el) el.style.display = "";
-  if (currentSub === "flows")   renderFlows();
-  if (currentSub === "creds")   renderCreds();
-  if (currentSub === "execs")   renderExecs();
-  if (currentSub === "folders") renderFolders();
+  if (currentSub === "flows") renderFlows();
+  if (currentSub === "execs") renderExecs();
 });
 
 /* ===== Mobile sidebar ===== */
