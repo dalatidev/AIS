@@ -290,8 +290,27 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
 
       <!-- Placeholders para as abas do menu lateral -->
       <div id="tabPastas" style="display:none">
-        <div class="toolbar"><button class="btn sm primary" id="btnNewFolder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova pasta</button></div>
-        <div class="grid" id="folderGrid"></div>
+        <!-- Lista de pastas -->
+        <div id="pastasListView">
+          <div class="toolbar">
+            <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchFolders" type="text" placeholder="Procurar pasta..." autocomplete="off"/></div>
+            <button class="btn sm primary" id="btnNewFolder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova pasta</button>
+          </div>
+          <div class="grid" id="folderGrid"></div>
+        </div>
+        <!-- Dentro de uma pasta -->
+        <div id="pastasDetailView" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+            <button class="btn sm" id="btnBackFolders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Voltar</button>
+            <div id="folderDetailDot" style="width:12px;height:12px;border-radius:50%;flex:0 0 auto"></div>
+            <h2 id="folderDetailName" style="font-size:17px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></h2>
+          </div>
+          <div class="toolbar">
+            <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchFolderFlows" type="text" placeholder="Procurar fluxo..." autocomplete="off"/></div>
+            <select class="sel" id="filterFolderFlowStatus"><option value="all">Todos os estados</option><option value="active">Ativo</option><option value="draft">Rascunho</option></select>
+          </div>
+          <div class="wf-list" id="folderFlowList"></div>
+        </div>
       </div>
       <div id="tabCredenciais" style="display:none">
         <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchCreds" type="text" placeholder="Procurar credencial..."/></div><button class="btn sm primary" id="btnNewCred"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova credencial</button></div>
