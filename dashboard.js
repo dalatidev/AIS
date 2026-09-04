@@ -39,16 +39,14 @@ function fmtDate(ts) {
 
 /* ===== Sidebar navigation ===== */
 const TITLES = {
-  overview:      ["Visão geral",  "Gerencie seus fluxos de trabalho, automações e recursos do A.I.S."],
-  pastas:        ["Pastas",       "Organize seus fluxos por projeto ou cliente."],
-  credenciais:   ["Credenciais",  "Gerencie chaves de API, tokens e autenticações."],
-  modelos:       ["Modelos",      "Modelos prontos para começar rapidamente."],
-  integracoes:   ["Integrações",  "Conecte serviços externos."],
-  ajuda:         ["Ajuda",        "Guias e recursos do A.I.S."],
-  configuracoes: ["Configurações","Preferências do sistema."],
+  overview:      ["Visão geral",    "Gerencie seus fluxos de trabalho, automações e recursos do A.I.S."],
+  pastas:        ["Pastas",         "Organize seus fluxos por projeto ou cliente."],
+  credenciais:   ["Credenciais",    "Gerencie chaves de API, tokens e autenticações."],
+  documentacao:  ["Documentação",   "Guias, referências e recursos do A.I.S."],
+  configuracoes: ["Configurações",  "Preferências do sistema."],
 };
 
-const TAB_IDS = ["overview","pastas","credenciais","modelos","integracoes","ajuda","configuracoes"];
+const TAB_IDS = ["overview","pastas","credenciais","documentacao","configuracoes"];
 document.querySelectorAll(".sb-item").forEach(it => it.onclick = () => {
   document.querySelectorAll(".sb-item").forEach(x => x.classList.remove("active"));
   it.classList.add("active");
