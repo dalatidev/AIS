@@ -1194,8 +1194,7 @@
     applyView();
     await AISStore.init();
     if (AISStore.isServer() && !(await AISStore.checkAuth())) {
-      const t = prompt("Este servidor A.I.S. pede um token de acesso.\nCole o token do terminal do celular:");
-      if (t) { AISStore.setToken(t.trim()); }
+      flash("Token necessário — vá em Configurações no painel inicial");
     }
 
     flow = flowId ? await AISStore.get(flowId) : null;
