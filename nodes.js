@@ -1,0 +1,606 @@
+/* =====================================================================
+   A.I.S. — Sistema de nós (v2)
+   Tipos: Webhook, Manual Trigger, HTTP Request, Set, IF, Code,
+          Respond to Webhook, Delay, Note
+   + Edges (conexões visuais) + Painel de execuções
+   ===================================================================== */
+(() => {
+"use strict";
+const TYPES = {};
+let selectedId = null, cfgOpen = false, execPanelOpen = false;
+let connecting = null; // { fromId, fromPort }
+let $world, $cfgPanel, $cfgScrim, $palBody, $palEmpty, $execPanel, $edgesSvg;
+
+const esc = s => { const d=document.createElement("div"); d.textContent=s; return d.innerHTML; };
+const uid = () => "nd_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+let saveTimer;
+function save(){ if(AIS.persist) AIS.persist(); }
+function saveLater(){ clearTimeout(saveTimer); saveTimer=setTimeout(save,400); }
+function findNode(id){ return AIS.flow?.nodes?.find(n=>n.id===id)||null; }
+function registerType(d){ TYPES[d.type]=d; }
+
+// Expõe register cedo para os arquivos em nos/ auto-registrarem antes do init.
+window.AISNodes = { register: registerType, TYPES };
+
+/* ===== Init ===== */
+function init(){
+  $world=AIS.world; $edgesSvg=document.getElementById("edges");
+  $cfgPanel=document.getElementById("configPanel");
+  $cfgScrim=document.getElementById("configScrim");
+  $execPanel=document.getElementById("execPanel");
+  $palBody=document.querySelector(".palette-body");
+  $palEmpty=document.getElementById("paletteEmpty");
+  populatePalette(); renderAllNodes(); renderEdges();
+  setupCanvasDeselect(); setupKeys(); setupPaletteSearch();
+  AIS.refreshEmpty();
+  // snapshot inicial pro undo
+  history.stack=[snapshot()]; history.idx=0; updateUndoUI();
+}
+
+/* ===== Palette ===== */
+function populatePalette(){
+  const cats={}; for(const[,d]of Object.entries(TYPES)){(cats[d.category]=cats[d.category]||[]).push(d);}
+  if(!Object.keys(cats).length)return; $palEmpty.style.display="none";
+  const order=["Gatilhos","Ações","Dados","Lógica","Outros"];
+  const sorted=order.filter(c=>cats[c]).concat(Object.keys(cats).filter(c=>!order.includes(c)));
+  for(const cat of sorted){ const defs=cats[cat]; if(!defs)continue;
+    const lbl=document.createElement("div"); lbl.className="pal-cat"; lbl.textContent=cat;
+    $palBody.insertBefore(lbl,$palEmpty);
+    for(const def of defs){
+      const it=document.createElement("div"); it.className="pal-item"; it.dataset.type=def.type;
+      it.dataset.search=(def.name+" "+def.desc+" "+cat).toLowerCase();
+      it.innerHTML=`<div class="pal-icon" style="background:${def.color}">${def.icon}</div>
+        <div class="pal-info"><b>${def.name}</b><span>${def.desc}</span></div>
+        ${def.trigger?'<span class="pal-badge">Gatilho</span>':""}`;
+      it.onclick=()=>{addNodeToCenter(def.type);closePalette();};
+      $palBody.insertBefore(it,$palEmpty);
+    }
+  }
+}
+function setupPaletteSearch(){
+  const inp=document.getElementById("paletteSearch");
+  inp.addEventListener("input",()=>{
+    const q=inp.value.trim().toLowerCase(); let any=false;
+    $palBody.querySelectorAll(".pal-item").forEach(el=>{const v=!q||el.dataset.search.includes(q);el.style.display=v?"":"none";if(v)any=true;});
+    $palBody.querySelectorAll(".pal-cat").forEach(el=>el.style.display=q?"none":"");
+    $palEmpty.style.display=any?"none":""; if(!any)$palEmpty.querySelector("b").textContent=q?"Nenhum nó encontrado":"Nenhum nó ainda";
+  });
+}
+function closePalette(){
+  document.getElementById("scrim").classList.remove("open");
+  document.getElementById("palette").classList.remove("open");
+  const inp=document.getElementById("paletteSearch"); inp.value=""; inp.dispatchEvent(new Event("input"));
+}
+
+/* ===== Histórico (undo/redo) ===== */
+const history={stack:[],idx:-1,MAX:50};
+function snapshot(){ return JSON.stringify({nodes:AIS.flow.nodes||[],edges:AIS.flow.edges||[]}); }
+function pushHistory(){
+  if(!AIS.flow)return;
+  const snap=snapshot();
+  // não empilha se igual ao topo
+  if(history.stack[history.idx]===snap)return;
+  history.stack=history.stack.slice(0,history.idx+1);
+  history.stack.push(snap);
+  if(history.stack.length>history.MAX)history.stack.shift();
+  history.idx=history.stack.length-1;
+  updateUndoUI();
+}
+function restore(snap){
+  const s=JSON.parse(snap);
+  AIS.flow.nodes=s.nodes;
+  AIS.flow.edges=s.edges;
+  // Re-render
+  $world.querySelectorAll(".ais-node").forEach(el=>el.remove());
+  renderAllNodes(); renderEdges();
+  AIS.refreshEmpty(); save();
+  updateUndoUI();
+}
+function undo(){ if(history.idx<=0)return false; history.idx--; restore(history.stack[history.idx]); return true; }
+function redo(){ if(history.idx>=history.stack.length-1)return false; history.idx++; restore(history.stack[history.idx]); return true; }
+function updateUndoUI(){
+  const b=document.getElementById("btnUndo");
+  if(b){ b.disabled=history.idx<=0; b.style.opacity=history.idx<=0?".4":"1"; }
+}
+
+/* ===== Auto layout ===== */
+function autoLayout(){
+  if(!AIS.flow||!AIS.flow.nodes||!AIS.flow.nodes.length)return;
+  pushHistory();
+  const nodes=AIS.flow.nodes, edges=AIS.flow.edges||[];
+  const outMap=new Map(), inMap=new Map();
+  for(const n of nodes){outMap.set(n.id,[]); inMap.set(n.id,[]);}
+  for(const e of edges){
+    if(outMap.has(e.from)) outMap.get(e.from).push(e.to);
+    if(inMap.has(e.to)) inMap.get(e.to).push(e.from);
+  }
+  // Coluna por camadas: BFS a partir de raízes (nós sem entrada)
+  const col=new Map(); const visited=new Set();
+  const roots=nodes.filter(n=>!inMap.get(n.id).length).map(n=>n.id);
+  // Se não há raízes (fluxo cíclico), começa por um qualquer
+  const queue=roots.length?roots.slice():nodes.length?[nodes[0].id]:[];
+  for(const r of queue) col.set(r,0);
+  while(queue.length){
+    const id=queue.shift();
+    if(visited.has(id))continue;
+    visited.add(id);
+    const c=col.get(id)||0;
+    for(const next of outMap.get(id)||[]){
+      const nc=Math.max(col.get(next)||0, c+1);
+      col.set(next,nc);
+      if(!visited.has(next))queue.push(next);
+    }
+  }
+  // Nós isolados ficam na coluna 0
+  for(const n of nodes) if(!col.has(n.id)) col.set(n.id,0);
+  // Agrupa por coluna
+  const cols={}; for(const n of nodes){ const c=col.get(n.id)||0; (cols[c]=cols[c]||[]).push(n); }
+  // Reposiciona
+  const COL_W=280, ROW_H=110, START_X=100, START_Y=100;
+  Object.keys(cols).sort((a,b)=>+a-+b).forEach(c=>{
+    const list=cols[c]; const totalH=(list.length-1)*ROW_H;
+    list.forEach((n,i)=>{
+      n.x=START_X + (+c)*COL_W;
+      n.y=START_Y + i*ROW_H - totalH/2 + 200;
+    });
+  });
+  // Re-render
+  $world.querySelectorAll(".ais-node").forEach(el=>el.remove());
+  renderAllNodes(); renderEdges();
+  save();
+}
+
+/* ===== Add / Remove ===== */
+function addNodeToCenter(type){
+  if(!AIS.flow)return; const def=TYPES[type]; if(!def)return;
+  const cv=document.getElementById("canvas"),r=cv.getBoundingClientRect();
+  let x=Math.round((r.width/2-AIS.view.x)/AIS.view.k-110);
+  let y=Math.round((r.height/2-AIS.view.y)/AIS.view.k-30);
+  for(const n of AIS.flow.nodes){if(Math.abs(n.x-x)<40&&Math.abs(n.y-y)<40){x+=50;y+=50;}}
+  const node={id:uid(),type,name:def.name,x,y,config:structuredClone(def.defaults)};
+  if(type==="webhook"&&!node.config.path) node.config.path=node.id.slice(3,11);
+  AIS.flow.nodes.push(node); renderNode(node); AIS.refreshEmpty(); pushHistory(); save();
+  setTimeout(()=>{selectNode(node.id);openConfig(node.id);},80);
+}
+function removeNode(id){
+  if(!AIS.flow)return; const i=AIS.flow.nodes.findIndex(n=>n.id===id); if(i===-1)return;
+  AIS.flow.nodes.splice(i,1);
+  AIS.flow.edges=(AIS.flow.edges||[]).filter(e=>e.from!==id&&e.to!==id);
+  $world.querySelector(`.ais-node[data-id="${id}"]`)?.remove();
+  if(selectedId===id){selectedId=null;closeConfig();}
+  renderEdges(); AIS.refreshEmpty(); pushHistory(); save();
+}
+
+/* ===== Render nodes ===== */
+function renderAllNodes(){ if(!AIS.flow?.nodes)return; for(const n of AIS.flow.nodes)renderNode(n); }
+function renderNode(node){
+  const def=TYPES[node.type]; if(!def)return;
+  const el=document.createElement("div"); el.className="ais-node"; el.dataset.id=node.id;
+  el.style.transform=`translate(${node.x}px,${node.y}px)`;
+  const hasIf=node.type==="if";
+  el.innerHTML=`
+    ${def.trigger?"":'<div class="node-port port-in" data-port="in"></div>'}
+    <div class="node-body">
+      <div class="node-icon" style="background:${def.color}">${def.icon}</div>
+      <div class="node-info"><div class="node-name">${esc(node.name)}</div><div class="node-desc">${getSubtitle(node)}</div></div>
+    </div>
+    ${hasIf?`<div class="node-port port-out port-true" data-port="true" title="True"></div>
+             <div class="node-port port-out port-false" data-port="false" title="False"></div>`
+           :'<div class="node-port port-out" data-port="out"></div>'}`;
+  setupDrag(el,node); setupPortClicks(el,node);
+  // Abrir config: aceita tanto dblclick nativo quanto dois cliques rápidos
+  const body=el.querySelector(".node-body");
+  const openIt=e=>{ e.stopPropagation(); if(el.classList.contains("dragging"))return;
+    selectNode(node.id); openConfig(node.id); };
+  body.addEventListener("dblclick",openIt);
+  let lastClickTime=0;
+  body.addEventListener("click",e=>{
+    e.stopPropagation(); if(el.classList.contains("dragging"))return;
+    const now=Date.now();
+    if(now-lastClickTime<500){ lastClickTime=0; openIt(e); }
+    else lastClickTime=now;
+  });
+  $world.appendChild(el);
+}
+function getSubtitle(n){
+  const c=n.config||{};
+  switch(n.type){
+    case"webhook":return `${c.method||"POST"} · /${esc(c.path||"...")}`;
+    case"httpRequest":return `${c.method||"GET"} · ${esc((c.url||"...").slice(0,30))}`;
+    case"set":return c.mode==="json"?"JSON":"Campos";
+    case"if":return `${esc(c.field||"...")} ${c.operator||"?"} ${esc(c.value||"")}`;
+    case"code":return "JavaScript";
+    case"delay":return `${c.amount||1} ${c.unit==="minutes"?"min":"seg"}`;
+    case"respondWebhook":return `HTTP ${c.responseCode||200}`;
+    default:return"";
+  }
+}
+function refreshNodeEl(node){
+  const el=$world.querySelector(`.ais-node[data-id="${node.id}"]`);
+  if(!el)return; el.querySelector(".node-name").textContent=node.name;
+  el.querySelector(".node-desc").innerHTML=getSubtitle(node);
+}
+
+/* ===== Drag ===== */
+function setupDrag(el,node){
+  let dragging=false,sx,sy,nx,ny;
+  function onDown(e){
+    if(e.target.classList.contains("node-port"))return; e.stopPropagation();
+    const p=e.touches?e.touches[0]:e; sx=p.clientX;sy=p.clientY;nx=node.x;ny=node.y;dragging=false;
+    // Seleciona logo (não abre config — isso é só no dblclick)
+    selectNode(node.id);
+    const onMove=e2=>{const p2=e2.touches?e2.touches[0]:e2;const dx=(p2.clientX-sx)/AIS.view.k;const dy=(p2.clientY-sy)/AIS.view.k;
+      if(!dragging&&Math.abs(dx)+Math.abs(dy)<3)return;dragging=true;el.classList.add("dragging");
+      node.x=Math.round(nx+dx);node.y=Math.round(ny+dy);el.style.transform=`translate(${node.x}px,${node.y}px)`;renderEdges();};
+    const onUp=()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);
+      window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onUp);
+      el.classList.remove("dragging");if(dragging){pushHistory();save();}};
+    window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+    window.addEventListener("touchmove",onMove,{passive:true});window.addEventListener("touchend",onUp);
+  }
+  el.addEventListener("mousedown",onDown);el.addEventListener("touchstart",onDown,{passive:true});
+}
+
+/* ===== Edges (conexões via arrastar) ===== */
+function setupPortClicks(el,node){
+  el.querySelectorAll(".node-port").forEach(port=>{
+    const portId=port.dataset.port;
+    const onDown=e=>{
+      e.stopPropagation(); e.preventDefault();
+      if(portId==="in"){
+        // Se já estiver arrastando de uma saída, completa aqui
+        if(connecting){completeConnection(node.id);return;}
+        return; // não inicia conexão a partir de porta de entrada
+      }
+      // Inicia arraste a partir de porta de saída
+      startConnection(node.id,portId,e);
+    };
+    port.addEventListener("mousedown",onDown);
+    port.addEventListener("touchstart",onDown,{passive:false});
+  });
+}
+
+function screenToWorld(clientX,clientY){
+  const cv=document.getElementById("canvas");
+  const r=cv.getBoundingClientRect();
+  return {
+    x:(clientX-r.left-AIS.view.x)/AIS.view.k,
+    y:(clientY-r.top-AIS.view.y)/AIS.view.k
+  };
+}
+
+function startConnection(fromId,fromPort,evt){
+  connecting={fromId,fromPort};
+  document.getElementById("canvas").classList.add("connecting-mode");
+
+  // Cria path temporário
+  const tempPath=document.createElementNS("http://www.w3.org/2000/svg","path");
+  tempPath.setAttribute("class","edge temp");
+  $edgesSvg.appendChild(tempPath);
+
+  const from=getPortPos(fromId,fromPort);
+  const updateTemp=(mx,my)=>{
+    if(!from)return;
+    const dx=Math.max(Math.abs(mx-from.x)*0.5,40);
+    tempPath.setAttribute("d",`M${from.x},${from.y} C${from.x+dx},${from.y} ${mx-dx},${my} ${mx},${my}`);
+  };
+
+  // Posição inicial (para caso não haja movimento antes do up)
+  const p0=evt.touches?evt.touches[0]:evt;
+  const w0=screenToWorld(p0.clientX,p0.clientY);
+  updateTemp(w0.x,w0.y);
+
+  const onMove=e=>{
+    const p=e.touches?e.touches[0]:e;
+    const w=screenToWorld(p.clientX,p.clientY);
+    // detecta hover sobre uma porta de entrada
+    const el=document.elementFromPoint(p.clientX,p.clientY);
+    const port=el?.closest?.(".port-in");
+    if(port){
+      const nid=port.closest(".ais-node")?.dataset.id;
+      if(nid&&nid!==fromId){
+        const tp=getPortPos(nid,"in");
+        if(tp){updateTemp(tp.x,tp.y);return;}
+      }
+    }
+    updateTemp(w.x,w.y);
+  };
+  const onUp=e=>{
+    window.removeEventListener("mousemove",onMove);
+    window.removeEventListener("mouseup",onUp);
+    window.removeEventListener("touchmove",onMove);
+    window.removeEventListener("touchend",onUp);
+    const p=e.changedTouches?e.changedTouches[0]:e;
+    const el=document.elementFromPoint(p.clientX,p.clientY);
+    // aceita drop sobre porta OU sobre o corpo do nó (mais tolerante)
+    let target=el?.closest?.(".port-in");
+    let nid=target?.closest(".ais-node")?.dataset.id;
+    if(!nid){
+      const nodeEl=el?.closest?.(".ais-node");
+      if(nodeEl){
+        const cand=nodeEl.dataset.id;
+        // só aceita se esse nó tem entrada (não é gatilho)
+        const cnode=findNode(cand);
+        if(cnode&&!TYPES[cnode.type]?.trigger)nid=cand;
+      }
+    }
+    tempPath.remove();
+    if(nid&&nid!==fromId)completeConnection(nid);
+    else cancelConnection();
+  };
+  window.addEventListener("mousemove",onMove);
+  window.addEventListener("mouseup",onUp);
+  window.addEventListener("touchmove",onMove,{passive:false});
+  window.addEventListener("touchend",onUp);
+}
+
+function completeConnection(toId){
+  if(!connecting||connecting.fromId===toId)return cancelConnection();
+  if(!AIS.flow.edges) AIS.flow.edges=[];
+  const dup=AIS.flow.edges.some(e=>e.from===connecting.fromId&&(e.fromPort||"out")===connecting.fromPort&&e.to===toId);
+  if(!dup){
+    AIS.flow.edges.push({id:"e_"+Date.now().toString(36),from:connecting.fromId,fromPort:connecting.fromPort,to:toId});
+    pushHistory(); save();
+  }
+  cancelConnection(); renderEdges();
+}
+function cancelConnection(){
+  connecting=null;
+  document.getElementById("canvas").classList.remove("connecting-mode");
+  $edgesSvg.querySelectorAll(".edge.temp").forEach(p=>p.remove());
+}
+function getPortPos(nodeId,portType){
+  const node=findNode(nodeId);const el=$world.querySelector(`.ais-node[data-id="${nodeId}"]`);
+  if(!node||!el)return null;
+  const body=el.querySelector(".node-body"); const w=body.offsetWidth||220; const h=body.offsetHeight||66;
+  if(portType==="in")return{x:node.x,y:node.y+h/2};
+  if(portType==="true")return{x:node.x+w,y:node.y+h*0.33};
+  if(portType==="false")return{x:node.x+w,y:node.y+h*0.67};
+  return{x:node.x+w,y:node.y+h/2};
+}
+function renderEdges(){
+  if(!$edgesSvg)return; $edgesSvg.innerHTML="";
+  for(const edge of(AIS.flow?.edges||[])){
+    const fp=getPortPos(edge.from,edge.fromPort||"out"); const tp=getPortPos(edge.to,"in");
+    if(!fp||!tp)continue;
+    const dx=Math.max(Math.abs(tp.x-fp.x)*0.5,40);
+    const d=`M${fp.x},${fp.y} C${fp.x+dx},${fp.y} ${tp.x-dx},${tp.y} ${tp.x},${tp.y}`;
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",d); path.setAttribute("class","edge "+(edge._status||""));
+    path.dataset.id=edge.id;
+    path.addEventListener("click",e=>{e.stopPropagation();
+      if(confirm("Remover esta conexão?")){AIS.flow.edges=AIS.flow.edges.filter(x=>x.id!==edge.id);renderEdges();pushHistory();save();}
+    });
+    // label for IF branches
+    if(edge.fromPort==="true"||edge.fromPort==="false"){
+      const lbl=document.createElementNS("http://www.w3.org/2000/svg","text");
+      lbl.setAttribute("x",(fp.x+20)); lbl.setAttribute("y",fp.y+(edge.fromPort==="true"?-6:6));
+      lbl.setAttribute("class","edge-label"); lbl.textContent=edge.fromPort==="true"?"✓":"✗";
+      $edgesSvg.appendChild(lbl);
+    }
+    $edgesSvg.appendChild(path);
+  }
+}
+
+/* ===== Selection ===== */
+function selectNode(id){deselectAll();selectedId=id;$world.querySelector(`.ais-node[data-id="${id}"]`)?.classList.add("selected");}
+function deselectAll(){selectedId=null;$world.querySelectorAll(".ais-node.selected").forEach(e=>e.classList.remove("selected"));}
+function setupCanvasDeselect(){
+  document.getElementById("canvas").addEventListener("click",e=>{
+    if(connecting){cancelConnection();return;}
+    if(e.target.id==="canvas"||e.target.id==="grid"||e.target.id==="world"){deselectAll();closeConfig();}
+  });
+}
+
+/* ===== Config Panel ===== */
+function openConfig(nodeId){
+  const node=findNode(nodeId);if(!node)return;const def=TYPES[node.type];if(!def)return;
+  cfgOpen=true; closeExecPanel();
+  let h=`<div class="cfg-head"><div class="cfg-head-icon" style="background:${def.color}">${def.icon}</div>
+    <input class="cfg-name" value="${esc(node.name)}" spellcheck="false"/>
+    <button class="cfg-close" id="cfgClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div><div class="cfg-scroll">`;
+  // Webhook URL
+  if(node.type==="webhook"){
+    const url=AISStore.isServer()?`${location.origin}/hook/${node.config.path||"..."}`:"";
+    h+=`<div class="cfg-sec"><div class="cfg-sec-label">Webhook URL</div>
+      <div class="cfg-url">${url?`<code id="cfgUrl">${esc(url)}</code><button class="cfg-url-copy" id="cfgCopy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`:'<span class="cfg-url-note">Disponível apenas com servidor</span>'}</div></div>`;
+  }
+  // Fields
+  h+='<div class="cfg-sec"><div class="cfg-sec-label">Configurações</div>';
+  for(const f of def.fields){
+    if(f.showIf){const[k,v]=Object.entries(f.showIf)[0];if(node.config[k]!==v)continue;}
+    h+=renderField(f,node.config[f.key]);
+  }
+  // KV editor for Set manual mode
+  if(node.type==="set"&&node.config.mode!=="json") h+='<label class="cfg-field"><span class="cfg-label">Campos</span><div id="kvEditor"></div></label>';
+  h+="</div>";
+  // Test (webhook)
+  if(node.type==="webhook"&&AISStore.isServer()){
+    h+=`<div class="cfg-sec"><div class="cfg-sec-label">Testar</div>
+      <button class="btn cfg-test-btn" id="cfgTestBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>Verificar dados</button>
+      <div class="cfg-test-data" id="cfgTestData">Nenhum dado recebido ainda.</div></div>`;
+  }
+  // Delete
+  h+=`<div class="cfg-sec cfg-sec-danger"><button class="btn cfg-delete" id="cfgDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir nó</button></div></div>`;
+  $cfgPanel.innerHTML=h; $cfgPanel.classList.add("open"); $cfgScrim.classList.add("open");
+  document.getElementById("cfgClose").onclick=closeConfig; $cfgScrim.onclick=closeConfig;
+  const nameInp=$cfgPanel.querySelector(".cfg-name");
+  nameInp.addEventListener("input",()=>{node.name=nameInp.value||def.name;refreshNodeEl(node);saveLater();});
+  $cfgPanel.querySelectorAll("[data-cfg]").forEach(inp=>{const k=inp.dataset.cfg;
+    const handler=()=>{node.config[k]=inp.type==="number"?Number(inp.value):inp.value;refreshNodeEl(node);saveLater();
+      if(["auth","mode"].includes(k))openConfig(nodeId);
+      if(k==="path"&&node.type==="webhook"){const u=document.getElementById("cfgUrl");if(u)u.textContent=`${location.origin}/hook/${node.config.path||"..."}`;}
+    };inp.addEventListener("input",handler);inp.addEventListener("change",handler);
+  });
+  // Key-value pairs for Set node
+  if(node.type==="set"&&node.config.mode!=="json") setupKVEditor(node);
+  const copyBtn=document.getElementById("cfgCopy"); if(copyBtn)copyBtn.onclick=copyUrl;
+  const testBtn=document.getElementById("cfgTestBtn"); if(testBtn)testBtn.onclick=()=>testWebhook(node);
+  document.getElementById("cfgDelete").onclick=()=>{if(confirm("Excluir este nó?"))removeNode(node.id);};
+}
+function closeConfig(){cfgOpen=false;$cfgPanel.classList.remove("open");$cfgScrim.classList.remove("open");}
+
+function renderField(f,val){
+  const v=val!==undefined?val:(f.default??"");
+  if(f.type==="select"){
+    const opts=f.options.map(o=>{const ov=typeof o==="object"?o.value:o;const ol=typeof o==="object"?o.label:o;
+      return`<option value="${ov}"${ov==v?" selected":""}>${esc(ol)}</option>`;}).join("");
+    return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><select class="cfg-input" data-cfg="${f.key}">${opts}</select></label>`;
+  }
+  if(f.type==="number")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="number" class="cfg-input" data-cfg="${f.key}" value="${v}" min="${f.min??0}" max="${f.max??999}"/></label>`;
+  if(f.type==="textarea")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><textarea class="cfg-input cfg-textarea" data-cfg="${f.key}" rows="${f.rows||6}" placeholder="${f.placeholder||""}">${esc(String(v))}</textarea></label>`;
+  return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="${f.type||"text"}" class="cfg-input" data-cfg="${f.key}" value="${esc(String(v))}" placeholder="${f.placeholder||""}"/></label>`;
+}
+function setupKVEditor(node){
+  const wrap=document.getElementById("kvEditor");if(!wrap)return;
+  const vals=node.config.values||[];
+  function render(){
+    wrap.innerHTML=vals.map((p,i)=>`<div class="kv-row"><input class="cfg-input kv-key" value="${esc(p.key||"")}" placeholder="chave" data-i="${i}" data-f="key"/>
+      <input class="cfg-input kv-val" value="${esc(p.value||"")}" placeholder="valor ou {{$input.x}}" data-i="${i}" data-f="value"/>
+      <button class="kv-del" data-i="${i}">×</button></div>`).join("")+
+      `<button class="btn kv-add" id="kvAdd">+ Campo</button>`;
+    wrap.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",()=>{vals[+inp.dataset.i][inp.dataset.f]=inp.value;node.config.values=vals;saveLater();}));
+    wrap.querySelectorAll(".kv-del").forEach(btn=>btn.addEventListener("click",()=>{vals.splice(+btn.dataset.i,1);node.config.values=vals;render();saveLater();}));
+    document.getElementById("kvAdd")?.addEventListener("click",()=>{vals.push({key:"",value:""});node.config.values=vals;render();saveLater();});
+  }
+  render();
+}
+
+/* ===== Webhook test ===== */
+async function testWebhook(node){
+  const btn=document.getElementById("cfgTestBtn"),out=document.getElementById("cfgTestData");
+  btn.disabled=true;btn.textContent="Verificando...";
+  try{const r=await fetch("/api/webhook-test/"+encodeURIComponent(node.config.path||""),{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
+    const d=await r.json();
+    if(d.lastHit){const w=new Date(d.lastHit.timestamp).toLocaleTimeString("pt-BR");
+      out.innerHTML=`<div class="cfg-test-meta">${d.lastHit.method} · ${w} · ${d.count} total</div><pre class="cfg-test-json">${esc(JSON.stringify(d.lastHit.body,null,2))}</pre>`;
+      out.classList.add("has-data");
+    }else{out.textContent="Nenhum dado recebido ainda.";out.classList.remove("has-data");}
+  }catch(e){out.textContent="Erro: "+e.message;}
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>Verificar dados';
+}
+function copyUrl(){const u=document.getElementById("cfgUrl");if(!u)return;
+  navigator.clipboard.writeText(u.textContent).catch(()=>{});
+  const b=document.getElementById("cfgCopy");if(b){b.style.color="#3ecf8e";setTimeout(()=>b.style.color="",800);}
+}
+
+/* ===== Execution Panel ===== */
+function openExecPanel(){
+  closeConfig(); execPanelOpen=true;
+  $execPanel.classList.add("open"); $cfgScrim.classList.add("open"); $cfgScrim.onclick=closeExecPanel;
+  loadExecutions();
+}
+function closeExecPanel(){execPanelOpen=false;$execPanel.classList.remove("open");$cfgScrim.classList.remove("open");
+  $world.querySelectorAll(".ais-node").forEach(n=>{n.classList.remove("exec-success","exec-error");});
+}
+async function loadExecutions(){
+  if(!AIS.flow)return;
+  let h=`<div class="cfg-head"><div class="cfg-head-icon" style="background:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+    <span class="cfg-name" style="pointer-events:none">Execuções</span>
+    <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="cfg-scroll"><div class="cfg-sec">
+    <button class="btn primary" style="width:100%;justify-content:center;margin-bottom:16px" id="execRunBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora</button>`;
+  if(AISStore.isServer()){
+    try{const r=await fetch("/api/executions/"+AIS.flow.id,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
+      const list=await r.json();
+      if(list.length){
+        h+=`<div class="cfg-sec-label">Histórico</div>`;
+        for(const ex of list){
+          const t=new Date(ex.startedAt).toLocaleTimeString("pt-BR");
+          const dur=ex.finishedAt?(ex.finishedAt-ex.startedAt)+"ms":"...";
+          const cls=ex.status==="success"?"exec-ok":"exec-err";
+          h+=`<div class="exec-item ${cls}" data-id="${ex.id}">
+            <div class="exec-dot"></div>
+            <div class="exec-info"><div>${t}</div><div class="exec-sub">${ex.stepCount} nós · ${dur}</div></div>
+            <div class="exec-status">${ex.status==="success"?"Sucesso":"Erro"}</div></div>`;
+        }
+      }else h+='<p class="cfg-hint">Nenhuma execução ainda.</p>';
+    }catch{h+='<p class="cfg-hint">Conecte-se ao servidor para ver execuções.</p>';}
+  }else h+='<p class="cfg-hint">Execuções ficam salvas no servidor (Termux). No modo local, você pode executar mas o histórico não persiste.</p>';
+  h+="</div></div>";
+  $execPanel.innerHTML=h;
+  document.getElementById("execClose").onclick=closeExecPanel;
+  document.getElementById("execRunBtn").onclick=runFlow;
+  $execPanel.querySelectorAll(".exec-item").forEach(el=>el.onclick=()=>showExecDetail(el.dataset.id));
+}
+async function runFlow(){
+  const btn=document.getElementById("execRunBtn"); btn.disabled=true; btn.textContent="Executando...";
+  try{
+    if(AISStore.isServer()){
+      const r=await fetch("/api/execute/"+AIS.flow.id,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:"{}"});
+      const exec=await r.json();
+      highlightExec(exec); loadExecutions();
+    }else{
+      // Modo local: sem execução real
+      alert("Execução requer o servidor (Termux). No modo estático os fluxos são apenas visuais.");
+    }
+  }catch(e){alert("Erro: "+e.message);}
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora';
+}
+async function showExecDetail(execId){
+  try{
+    const r=await fetch(`/api/executions/${AIS.flow.id}/${execId}`,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
+    const exec=await r.json(); highlightExec(exec);
+    const total=exec.finishedAt?(exec.finishedAt-exec.startedAt):0;
+    const when=new Date(exec.startedAt).toLocaleString("pt-BR");
+    const errStep=(exec.steps||[]).find(s=>s.status==="error");
+    let h=`<div class="cfg-head">
+      <button class="cfg-close" id="execBack" style="width:32px" title="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <span class="cfg-name" style="pointer-events:none">Execução</span>
+      <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      <div class="cfg-scroll">
+      <div class="cfg-sec">
+        <div class="exec-summary ${exec.status==="success"?"exec-ok":"exec-err"}">
+          <div class="exec-summary-status">${exec.status==="success"?"✓ Sucesso":"✗ Erro"}</div>
+          <div class="exec-summary-meta">${when} · ${total}ms · ${(exec.steps||[]).length} nós</div>
+          ${errStep?`<div class="exec-summary-err"><b>Erro em:</b> ${esc(errStep.nodeName)}<br><span>${esc(errStep.error||"—")}</span></div>`:""}
+        </div>
+      </div>
+      <div class="cfg-sec"><div class="cfg-sec-label">Passos executados</div>`;
+    for(const s of (exec.steps||[])){
+      const ok=s.status==="success";
+      const dur=s.finishedAt?(s.finishedAt-s.startedAt)+"ms":"...";
+      h+=`<div class="exec-detail-step ${ok?"exec-ok":"exec-err"}">
+        <div class="exec-detail-head">
+          <div class="exec-dot"></div>
+          <span class="exec-detail-name">${esc(s.nodeName)}</span>
+          <span class="exec-detail-type">${s.nodeType}</span>
+          <span class="exec-detail-dur">${dur}</span>
+        </div>
+        ${s.error?`<div class="exec-detail-error"><b>Erro:</b> ${esc(s.error)}</div>`:""}
+        ${s.input?`<details class="exec-detail-data"><summary>Entrada</summary><pre>${esc(JSON.stringify(s.input,null,2).slice(0,2000))}</pre></details>`:""}
+        ${s.output?`<details class="exec-detail-data" ${ok?"":"open"}><summary>Saída</summary><pre>${esc(JSON.stringify(s.output,null,2).slice(0,2000))}</pre></details>`:""}
+      </div>`;
+    }
+    h+=`</div></div>`;
+    $execPanel.innerHTML=h;
+    document.getElementById("execClose").onclick=closeExecPanel;
+    document.getElementById("execBack").onclick=loadExecutions;
+  }catch(e){}
+}
+function highlightExec(exec){
+  $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
+  for(const s of(exec.steps||[])){
+    const el=$world.querySelector(`.ais-node[data-id="${s.nodeId}"]`);
+    if(el)el.classList.add(s.status==="success"?"exec-success":"exec-error");
+  }
+}
+
+/* ===== Keys ===== */
+function setupKeys(){
+  window.addEventListener("keydown",e=>{
+    const tag=document.activeElement.tagName;if(tag==="INPUT"||tag==="SELECT"||tag==="TEXTAREA")return;
+    if((e.key==="Delete"||e.key==="Backspace")&&selectedId){e.preventDefault();if(confirm("Excluir este nó?"))removeNode(selectedId);}
+    if(e.key==="Escape"){if(cfgOpen)closeConfig();if(execPanelOpen)closeExecPanel();cancelConnection();}
+    if((e.ctrlKey||e.metaKey)&&e.key==="z"&&!e.shiftKey){e.preventDefault();undo();}
+    if((e.ctrlKey||e.metaKey)&&(e.key==="y"||(e.key==="z"&&e.shiftKey))){e.preventDefault();redo();}
+  });
+}
+
+/* ===== Export ===== */
+// Mantém register já exposto e adiciona os métodos internos.
+Object.assign(window.AISNodes, {init,TYPES,addNode:addNodeToCenter,removeNode,openConfig,closeConfig,
+  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,
+  undo,redo,autoLayout});
+})();

@@ -1,0 +1,8 @@
+node_modules/
+.vercel
+.DS_Store
+*.log
+
+# Dados e token gerados pelo servidor (não versionar)
+data/flows.json
+data/config.json

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="theme-color" content="#0A0E1A"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%275%27 fill=%27%232F7BFF%27/%3E%3Cg fill=%27none%27 stroke=%27white%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%276%27 cy=%276%27 r=%272%27/%3E%3Ccircle cx=%2718%27 cy=%276%27 r=%272%27/%3E%3Ccircle cx=%2712%27 cy=%2718%27 r=%272%27/%3E%3Cpath d=%27M8 6h8M7 8l3.5 8M17 8l-3.5 8%27/%3E%3C/g%3E%3C/svg%3E"/>
+<title>A.I.S. — Visão geral</title>
+<style>
+:root{
+  --bg:#0A0E1A; --surface:#0F1421; --surface-2:#151C2E; --surface-3:#1C2540;
+  --line:#26314A; --line-soft:#1B2338;
+  --white:#F5F8FF; --muted:#8A98B8; --muted-2:#5D6A88;
+  --blue:#2F7BFF; --blue-soft:#1B3A6B; --blue-glow:rgba(47,123,255,.35);
+  --green:#3ecf8e; --red:#ff5a6a; --orange:#F97316; --amber:#EAB308;
+  --radius:12px; --sidebar-w:240px;
+  --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:var(--font);background:var(--bg);color:var(--white);min-height:100dvh;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ===== Layout shell ===== */
+.app{display:flex;min-height:100dvh}
+
+/* ===== Sidebar ===== */
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);background:#080B14;border-right:1px solid var(--line-soft);display:flex;flex-direction:column;z-index:40;transition:transform .26s cubic-bezier(.32,.72,.28,1)}
+.sb-brand{display:flex;align-items:center;gap:11px;padding:16px 18px;user-select:none}
+.sb-logo{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;background:linear-gradient(145deg,var(--blue),#1857c9);box-shadow:0 0 0 1px rgba(255,255,255,.08),0 6px 18px -6px var(--blue-glow)}
+.sb-logo svg{width:20px;height:20px}
+.sb-brand b{font-size:16px;letter-spacing:.06em;font-weight:700;display:block}
+.sb-brand small{font-size:10px;color:var(--muted);display:block;margin-top:1px}
+.sb-nav{padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.sb-item{position:relative;display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:background .12s,color .12s}
+.sb-item:hover{background:var(--surface-2);color:var(--white)}
+.sb-item.active{background:rgba(47,123,255,.12);color:var(--white)}
+.sb-item.active::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--blue)}
+.sb-item svg{width:18px;height:18px;flex:0 0 auto}
+.sb-item .badge-soon{margin-left:auto;font-size:9.5px;font-weight:700;color:var(--muted-2);background:var(--surface-2);padding:2px 6px;border-radius:4px;letter-spacing:.04em}
+.sb-flex{flex:1}
+.sb-sep-lbl{font-size:10px;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.08em;padding:14px 12px 6px}
+.sb-foot{padding:10px 12px;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--muted-2);display:flex;align-items:center;gap:8px}
+.sb-foot .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.dot.server{background:var(--green);box-shadow:0 0 6px var(--green)}.dot.local{background:var(--muted-2)}
+
+/* ===== Main ===== */
+.main{flex:1;margin-left:var(--sidebar-w);min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:30;display:flex;align-items:flex-start;gap:16px;padding:20px 28px;background:linear-gradient(180deg,rgba(10,14,26,.94),rgba(10,14,26,.72));backdrop-filter:blur(12px);border-bottom:1px solid var(--line-soft)}
+.topbar h1{font-size:22px;font-weight:700;letter-spacing:-.015em}
+.topbar .sub{font-size:13px;color:var(--muted);margin-top:3px;max-width:600px}
+.hamburger{display:none;width:38px;height:38px;flex:0 0 auto;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--white);cursor:pointer;place-items:center;margin-top:2px}
+.hamburger svg{width:18px;height:18px}
+.spacer{flex:1}
+.content{flex:1;padding:24px 28px 60px;max-width:1240px;width:100%;margin:0 auto}
+
+/* ===== Buttons ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:38px;padding:0 14px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-weight:600;color:var(--white);background:var(--surface-2);cursor:pointer;transition:background .14s,border-color .14s,filter .14s,transform .05s;white-space:nowrap}
+.btn:hover{background:#1E263C;border-color:#354565}.btn:active{transform:translateY(1px)}
+.btn svg{width:15px;height:15px}
+.btn.primary{background:linear-gradient(145deg,var(--blue),#1c62d6);border-color:transparent;box-shadow:0 5px 14px -6px var(--blue-glow)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.split{padding-right:0}
+.btn.split .caret{display:flex;align-items:center;justify-content:center;width:32px;height:100%;border-left:1px solid rgba(255,255,255,.15);align-self:stretch}
+.btn.sm{height:32px;padding:0 11px;font-size:12.5px;border-radius:7px}
+.btn.danger{color:var(--red);border-color:rgba(255,90,106,.22);background:rgba(255,90,106,.07)}.btn.danger:hover{background:rgba(255,90,106,.14)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}.btn.ghost:hover{background:var(--surface-2);color:var(--white)}
+.icon-btn{width:38px;height:38px;flex:0 0 auto;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:background .14s,color .14s}
+.icon-btn:hover{background:#1E263C;color:var(--white)}.icon-btn svg{width:15px;height:15px}
+.icon-btn.sm{width:32px;height:32px}
+
+/* ===== Metrics ===== */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:22px}
+.metric{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);padding:16px 18px}
+.metric .label{font-size:12.5px;color:var(--muted);margin-bottom:8px;font-weight:500}
+.metric .value{font-size:26px;font-weight:750;letter-spacing:-.02em;line-height:1.1}
+.metric .value.sm{font-size:19px}
+.metric .delta{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;margin-top:6px;color:var(--muted-2);font-weight:500}
+.metric .delta.up{color:var(--green)}
+.metric .delta.down{color:var(--red)}
+
+/* ===== Tabs ===== */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--line-soft);margin-bottom:16px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{position:relative;padding:11px 16px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;background:none;border:none;white-space:nowrap;transition:color .14s}
+.tab:hover{color:var(--white)}
+.tab.active{color:var(--blue)}
+.tab.active::after{content:"";position:absolute;bottom:-1px;left:16px;right:16px;height:2px;background:var(--blue);border-radius:2px 2px 0 0}
+
+/* ===== Toolbar ===== */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;justify-content:flex-end}
+.search{display:flex;align-items:center;gap:9px;flex:1;min-width:200px;padding:0 13px;height:40px;background:var(--surface);border:1px solid var(--line-soft);border-radius:9px}
+.search svg{width:15px;height:15px;color:var(--muted-2);flex:0 0 auto}
+.search input{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--white);font-family:inherit;font-size:13.5px}
+.search input::placeholder{color:var(--muted-2)}
+.search:focus-within{border-color:var(--blue)}
+select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1px solid var(--line-soft);border-radius:9px;color:var(--white);font-family:inherit;font-size:13px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238A98B8'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;outline:none;cursor:pointer}
+
+/* ===== Workflow list (rows) ===== */
+.wf-list{display:flex;flex-direction:column;gap:8px}
+.wf-row{position:relative;display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);cursor:pointer;transition:border-color .14s,transform .05s}
+.wf-row:hover{border-color:#33436a}
+.wf-row:has(.menu.open){z-index:20}
+.wf-thumb{width:44px;height:44px;flex:0 0 auto;border-radius:9px;background:radial-gradient(circle at 30% 30%,rgba(47,123,255,.4),transparent 55%),var(--surface-2);border:1px solid var(--line-soft);display:grid;place-items:center;color:var(--blue)}
+.wf-thumb svg{width:20px;height:20px}
+.wf-main{flex:1;min-width:0}
+.wf-name{font-size:14.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.wf-meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.wf-meta .sep{width:3px;height:3px;border-radius:50%;background:var(--muted-2)}
+.wf-project{font-size:11.5px;color:var(--muted);padding:3px 8px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line-soft);display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.wf-project svg{width:11px;height:11px}
+.wf-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:5px;white-space:nowrap}
+.wf-status .st-dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto}
+.wf-status.active{color:var(--green);background:rgba(62,207,142,.1)}.wf-status.active .st-dot{background:var(--green);box-shadow:0 0 5px var(--green)}
+.wf-status.published{color:var(--blue);background:rgba(47,123,255,.12)}.wf-status.published .st-dot{background:var(--blue);box-shadow:0 0 5px var(--blue)}
+.wf-status.paused{color:var(--amber);background:rgba(234,179,8,.1)}.wf-status.paused .st-dot{background:var(--amber)}
+.wf-status.error{color:var(--red);background:rgba(255,90,106,.1)}.wf-status.error .st-dot{background:var(--red)}
+.wf-status.draft{color:var(--muted);background:var(--surface-2)}.wf-status.draft .st-dot{background:var(--muted-2)}
+@media(max-width:640px){.wf-project{display:none}.wf-row{padding:14px 12px;gap:10px}.wf-thumb{width:38px;height:38px}}
+
+/* ===== Menu ===== */
+.menu-wrap{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + 4px);z-index:40;min-width:180px;padding:5px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;box-shadow:0 16px 40px -12px rgba(0,0,0,.9);display:none;flex-direction:column}
+.menu.open{display:flex}
+.menu button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;border-radius:6px;background:none;cursor:pointer;font-size:12.5px;color:var(--white);text-align:left;transition:background .12s}
+.menu button:hover{background:#243149}
+.menu button svg{width:14px;height:14px;color:var(--muted)}
+.menu button.danger{color:var(--red)}.menu button.danger svg{color:var(--red)}
+.menu .sep{height:1px;background:var(--line-soft);margin:3px 2px}
+
+/* ===== Pagination ===== */
+.paging{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft);flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.paging-nums{display:flex;align-items:center;gap:4px}
+.pg-btn{min-width:32px;height:32px;padding:0 8px;border:1px solid var(--line-soft);border-radius:6px;background:transparent;color:var(--muted);font-size:12.5px;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.pg-btn:hover:not(:disabled){background:var(--surface-2);color:var(--white)}
+.pg-btn:disabled{opacity:.35;cursor:not-allowed}
+.pg-btn.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.paging select.sel{height:32px;font-size:12px}
+
+/* ===== Empty / cards genéricos ===== */
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;padding:60px 20px;color:var(--muted)}
+.empty .ring{width:80px;height:80px;border-radius:20px;display:grid;place-items:center;position:relative;background:radial-gradient(100px 100px at 50% 30%,var(--blue-soft),transparent 70%)}
+.empty .ring::before{content:"";position:absolute;inset:0;border-radius:20px;border:1.5px dashed var(--line);animation:spin 22s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty .ring svg{width:32px;height:32px}
+.empty h2{color:var(--white);font-size:17px;font-weight:700}
+.empty p{max-width:340px;font-size:13.5px;line-height:1.55}
+
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.card-basic{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);padding:14px}
+.card-basic h3{font-size:14.5px;font-weight:650;margin-bottom:2px}
+.card-basic .desc{font-size:12px;color:var(--muted);margin-bottom:10px}
+
+/* Execuções */
+.exec-row{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:10px;background:var(--surface);border:1px solid var(--line-soft);cursor:pointer;transition:border-color .14s;margin-bottom:6px}
+.exec-row:hover{border-color:#33436a}
+.exec-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.exec-dot.ok{background:var(--green)}.exec-dot.err{background:var(--red)}
+.exec-info{flex:1;min-width:0}.exec-info b{font-size:13.5px;font-weight:600;display:block}
+.exec-info span{font-size:11.5px;color:var(--muted)}
+.exec-badge{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:5px}
+.exec-badge.ok{background:rgba(62,207,142,.12);color:var(--green)}
+.exec-badge.err{background:rgba(255,90,106,.12);color:var(--red)}
+
+/* Credenciais */
+.cred-card{display:flex;align-items:center;gap:12px;padding:14px;background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);transition:border-color .14s}
+.cred-card:hover{border-color:#33436a}
+.cred-icon{width:40px;height:40px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;font-size:17px;background:var(--surface-2);border:1px solid var(--line-soft)}
+.cred-info{flex:1;min-width:0}.cred-info b{display:block;font-size:13.5px;font-weight:600}.cred-info span{font-size:11.5px;color:var(--muted)}
+
+/* Pastas / cores */
+.folder-dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
+
+/* Modal */
+.modal-bg{position:fixed;inset:0;z-index:60;background:rgba(5,8,16,.65);backdrop-filter:blur(3px);display:none;place-items:center;padding:20px}
+.modal-bg.open{display:grid}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:100%;max-width:460px;max-height:85dvh;overflow-y:auto;padding:22px;box-shadow:0 22px 55px -18px rgba(0,0,0,.85)}
+.modal h3{font-size:17px;font-weight:700;margin-bottom:16px}
+.modal label{display:block;margin-bottom:12px;font-size:12.5px;color:var(--muted)}
+.modal label>span{display:block;margin-bottom:5px}
+.modal input,.modal select,.modal textarea{width:100%;height:40px;padding:0 12px;background:var(--surface-2);border:1px solid var(--line-soft);border-radius:8px;color:var(--white);font-family:inherit;font-size:13.5px;outline:none;-webkit-appearance:none;appearance:none}
+.modal input:focus,.modal select:focus,.modal textarea:focus{border-color:var(--blue)}
+.modal textarea{height:auto;padding:10px 12px;resize:vertical;font-family:monospace;font-size:12.5px}
+.modal select{padding-right:32px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238A98B8'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;cursor:pointer}
+.modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
+.scrim{position:fixed;inset:0;z-index:35;background:rgba(5,8,16,.55);opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.open{opacity:1;pointer-events:auto}
+
+/* Dropdown do botão split (Criar fluxo ▼) */
+.dropdown{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:220px;padding:5px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;box-shadow:0 16px 40px -10px rgba(0,0,0,.9);display:none;flex-direction:column}
+.dropdown.open{display:flex}
+.dropdown button{display:flex;align-items:center;gap:10px;padding:9px 10px;border:none;border-radius:7px;background:none;cursor:pointer;font-size:13px;color:var(--white);text-align:left;transition:background .12s}
+.dropdown button:hover{background:#243149}
+.dropdown button svg{width:15px;height:15px;color:var(--muted)}
+
+/* Responsivo */
+@media(max-width:900px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+  .main{margin-left:0}
+  .hamburger{display:grid}
+  .content{padding:16px 16px 60px}
+  .topbar{padding:16px}
+  .topbar h1{font-size:19px}
+}
+@media(max-width:520px){
+  .metric{padding:14px}.metric .value{font-size:22px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <a class="sb-brand" href="index.html">
+      <div class="sb-logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8.4 6H15.6M7 8.2l3.5 7.6M17 8.2l-3.5 7.6"/></svg></div>
+      <div><b>A.I.S.</b><small>Automação Inteligente e Simplificada</small></div>
+    </a>
+    <nav class="sb-nav">
+      <button class="sb-item active" data-tab="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Visão geral</button>
+      <button class="sb-item" data-tab="pessoal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Pessoal</button>
+      <button class="sb-item" data-tab="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Bate-papo <span class="badge-soon">EM BREVE</span></button>
+      <button class="sb-item" data-tab="agentes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>Agentes <span class="badge-soon">EM BREVE</span></button>
+      <button class="sb-item" data-tab="automacoes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>Automações</button>
+    </nav>
+    <div class="sb-flex"></div>
+    <div class="sb-sep-lbl">Recursos</div>
+    <nav class="sb-nav" style="padding-top:0">
+      <button class="sb-item" data-tab="modelos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Modelos <span class="badge-soon">EM BREVE</span></button>
+      <button class="sb-item" data-tab="integracoes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Integrações <span class="badge-soon">EM BREVE</span></button>
+      <button class="sb-item" data-tab="ajuda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>Ajuda</button>
+      <button class="sb-item" data-tab="configuracoes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>Configurações</button>
+    </nav>
+    <div class="sb-foot"><span class="dot local" id="modeDot"></span><span id="modeText">Modo local</span></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ===== MAIN ===== -->
+  <div class="main">
+    <div class="topbar">
+      <button class="hamburger" id="hamburger" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg></button>
+      <div style="flex:1;min-width:0"><h1 id="pageTitle">Visão geral</h1><div class="sub" id="pageSub">Gerencie seus fluxos de trabalho, automações e recursos do A.I.S.</div></div>
+      <div class="menu-wrap" id="createWrap">
+        <button class="btn primary split" id="btnCreate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>Criar fluxo</span><span class="caret" id="btnCreateCaret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="m6 9 6 6 6-6"/></svg></span></button>
+        <div class="dropdown" id="createMenu">
+          <button data-act="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Fluxo em branco</button>
+          <button data-act="import"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Importar de JSON</button>
+          <button data-act="folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Nova pasta</button>
+          <button data-act="cred"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Nova credencial</button>
+        </div>
+      </div>
+      <input type="file" id="importFile" accept=".json" hidden/>
+    </div>
+
+    <div class="content">
+      <div id="tabOverview">
+        <div class="metrics" id="metricsGrid"></div>
+
+        <div class="tabs" id="subtabs">
+          <button class="tab active" data-sub="flows">Fluxos de trabalho</button>
+          <button class="tab" data-sub="creds">Credenciais</button>
+          <button class="tab" data-sub="execs">Execuções</button>
+          <button class="tab" data-sub="vars">Variáveis</button>
+          <button class="tab" data-sub="tables">Tabelas de dados</button>
+          <button class="tab" data-sub="folders">Pastas</button>
+        </div>
+
+        <!-- SUB: FLOWS -->
+        <div id="subFlows">
+          <div class="toolbar">
+            <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchFlows" type="text" placeholder="Procurar fluxo..." autocomplete="off"/></div>
+            <select class="sel" id="sortFlows"><option value="updated_desc">Última atualização</option><option value="created_desc">Criado recentemente</option><option value="created_asc">Mais antigos</option><option value="az">Nome A–Z</option><option value="za">Nome Z–A</option></select>
+            <select class="sel" id="filterStatus"><option value="all">Todos os estados</option><option value="active">Ativo</option><option value="published">Publicado</option><option value="paused">Pausado</option><option value="error">Erro</option><option value="draft">Rascunho</option></select>
+            <select class="sel" id="filterFolder"><option value="all">Todas as pastas</option></select>
+          </div>
+          <div class="wf-list" id="flowList"></div>
+          <div class="paging" id="paging"></div>
+        </div>
+
+        <!-- SUB: CREDS -->
+        <div id="subCreds" style="display:none">
+          <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchCreds" type="text" placeholder="Procurar credencial..."/></div><button class="btn sm primary" id="btnNewCred"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova credencial</button></div>
+          <div class="grid" id="credGrid"></div>
+        </div>
+
+        <!-- SUB: EXECS -->
+        <div id="subExecs" style="display:none">
+          <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchExecs" type="text" placeholder="Procurar por fluxo..."/></div><select class="sel" id="filterExecStatus"><option value="all">Todos</option><option value="success">Sucesso</option><option value="error">Erro</option></select></div>
+          <div id="execList"></div>
+        </div>
+
+        <!-- SUB: VARS (placeholder) -->
+        <div id="subVars" style="display:none">
+          <div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h16M4 19h16"/></svg></div><h2>Variáveis em breve</h2><p>Guarde valores reutilizáveis entre fluxos (ex.: URLs base, chaves de ambiente).</p></div>
+        </div>
+
+        <!-- SUB: TABLES (placeholder) -->
+        <div id="subTables" style="display:none">
+          <div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div><h2>Tabelas de dados em breve</h2><p>Armazene dados estruturados que seus fluxos podem ler e escrever.</p></div>
+        </div>
+
+        <!-- SUB: FOLDERS -->
+        <div id="subFolders" style="display:none">
+          <div class="toolbar"><button class="btn sm primary" id="btnNewFolder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova pasta</button></div>
+          <div class="grid" id="folderGrid"></div>
+        </div>
+      </div>
+
+      <!-- Placeholders para as abas "em breve" -->
+      <div id="tabPessoal" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/></svg></div><h2>Seu espaço pessoal</h2><p>Perfil, preferências e informações da sua conta local.</p></div></div>
+      <div id="tabChat" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h2>Bate-papo com IA — em breve</h2><p>Converse com a inteligência artificial diretamente do A.I.S. para criar e depurar fluxos.</p></div></div>
+      <div id="tabAgentes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg></div><h2>Agentes de IA — em breve</h2><p>Agentes autônomos que executam tarefas complexas usando os seus fluxos como ferramentas.</p></div></div>
+      <div id="tabAutomacoes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg></div><h2>Automações</h2><p>Sinônimo de Fluxos — use a aba "Visão geral" para ver a lista completa.</p></div></div>
+      <div id="tabModelos" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div><h2>Modelos de fluxo — em breve</h2><p>Comece de um modelo pronto para casos comuns (webhooks, integrações, agentes).</p></div></div>
+      <div id="tabIntegracoes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div><h2>Integrações — em breve</h2><p>Conecte serviços externos (Gmail, WhatsApp, Notion, e muito mais) para usar nos fluxos.</p></div></div>
+      <div id="tabAjuda" style="display:none"><div class="empty" style="max-width:520px;margin:0 auto"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg></div><h2>Ajuda</h2><p>Bem-vindo ao A.I.S. — sua plataforma de automação. Consulte o README do projeto para o guia completo ou o TERMUX.md para configurar seu servidor local.</p></div></div>
+      <div id="tabConfiguracoes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6"/></svg></div><h2>Configurações</h2><p>Preferências do sistema, gerenciamento de token e configurações avançadas — em breve.</p></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalContent"></div></div>
+
+<script src="store.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "ais",
+  "version": "0.1.0",
+  "description": "A.I.S. — Automação Inteligente e Simplificada",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}
