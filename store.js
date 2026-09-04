@@ -119,6 +119,14 @@
       if(this.mode!=="server")return[];
       try{return await api("GET","/api/executions/"+flowId);}catch{return[];}
     },
+    async deleteExecution(flowId, execId){
+      if(this.mode!=="server")return false;
+      try{await api("DELETE",`/api/executions/${flowId}/${execId}`);return true;}catch{return false;}
+    },
+    async clearAllExecutions(){
+      if(this.mode!=="server")return false;
+      try{await api("DELETE","/api/all-executions");return true;}catch{return false;}
+    },
 
     // Import / Export
     async exportFlow(id){
