@@ -604,6 +604,78 @@ async function editFolder(id) {
   };
 }
 
+/* ===== CONFIG: Token ===== */
+(function setupTokenConfig() {
+  const inp = $("cfgToken");
+  const status = $("cfgTokenStatus");
+  const eyeOff = $("cfgEyeOff");
+  const eyeOn = $("cfgEyeOn");
+
+  // Carregar token salvo
+  const saved = localStorage.getItem("ais.token") || "";
+  if (saved) inp.value = saved;
+
+  // Mostrar/ocultar token
+  $("cfgToggleVis").onclick = () => {
+    if (inp.type === "password") {
+      inp.type = "text";
+      eyeOff.style.display = "none";
+      eyeOn.style.display = "";
+    } else {
+      inp.type = "password";
+      eyeOff.style.display = "";
+      eyeOn.style.display = "none";
+    }
+  };
+
+  // Botão Colar
+  $("cfgPaste").onclick = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      inp.value = text.trim();
+      inp.focus();
+    } catch {
+      inp.focus();
+      document.execCommand("paste");
+    }
+  };
+
+  // Botão Conectar
+  $("cfgConnect").onclick = async () => {
+    const token = inp.value.trim();
+    if (!token) {
+      status.textContent = "Cole um token primeiro.";
+      status.className = "cfg-token-status err";
+      return;
+    }
+    status.textContent = "Verificando...";
+    status.className = "cfg-token-status loading";
+
+    AISStore.setToken(token);
+    const ok = await AISStore.checkAuth();
+    if (ok) {
+      status.textContent = "✓ Conectado ao servidor com sucesso!";
+      status.className = "cfg-token-status ok";
+      $("modeDot").className = "dot server";
+      $("modeText").textContent = "Servidor conectado";
+    } else {
+      status.textContent = "✕ Token inválido ou servidor inacessível.";
+      status.className = "cfg-token-status err";
+      AISStore.clearToken();
+    }
+  };
+
+  // Mostrar status inicial se já conectado
+  if (saved && AISStore.isServer()) {
+    AISStore.checkAuth().then(ok => {
+      if (ok) {
+        status.textContent = "✓ Conectado";
+        status.className = "cfg-token-status ok";
+      }
+    });
+  }
+})();
+
 /* ===== INIT ===== */
 (async () => {
   await AISStore.init();
