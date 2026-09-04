@@ -221,10 +221,8 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
     </a>
     <nav class="sb-nav">
       <button class="sb-item active" data-tab="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Visão geral</button>
-      <button class="sb-item" data-tab="pessoal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Pessoal</button>
-      <button class="sb-item" data-tab="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Bate-papo <span class="badge-soon">EM BREVE</span></button>
-      <button class="sb-item" data-tab="agentes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>Agentes <span class="badge-soon">EM BREVE</span></button>
-      <button class="sb-item" data-tab="automacoes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>Automações</button>
+      <button class="sb-item" data-tab="pastas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Pastas</button>
+      <button class="sb-item" data-tab="credenciais"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Credenciais</button>
     </nav>
     <div class="sb-flex"></div>
     <div class="sb-sep-lbl">Recursos</div>
@@ -261,11 +259,7 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
 
         <div class="tabs" id="subtabs">
           <button class="tab active" data-sub="flows">Fluxos de trabalho</button>
-          <button class="tab" data-sub="creds">Credenciais</button>
           <button class="tab" data-sub="execs">Execuções</button>
-          <button class="tab" data-sub="vars">Variáveis</button>
-          <button class="tab" data-sub="tables">Tabelas de dados</button>
-          <button class="tab" data-sub="folders">Pastas</button>
         </div>
 
         <!-- SUB: FLOWS -->
@@ -280,40 +274,22 @@ select.sel{height:40px;padding:0 30px 0 12px;background:var(--surface);border:1p
           <div class="paging" id="paging"></div>
         </div>
 
-        <!-- SUB: CREDS -->
-        <div id="subCreds" style="display:none">
-          <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchCreds" type="text" placeholder="Procurar credencial..."/></div><button class="btn sm primary" id="btnNewCred"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova credencial</button></div>
-          <div class="grid" id="credGrid"></div>
-        </div>
-
         <!-- SUB: EXECS -->
         <div id="subExecs" style="display:none">
           <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchExecs" type="text" placeholder="Procurar por fluxo..."/></div><select class="sel" id="filterExecStatus"><option value="all">Todos</option><option value="success">Sucesso</option><option value="error">Erro</option></select></div>
           <div id="execList"></div>
         </div>
-
-        <!-- SUB: VARS (placeholder) -->
-        <div id="subVars" style="display:none">
-          <div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h16M4 19h16"/></svg></div><h2>Variáveis em breve</h2><p>Guarde valores reutilizáveis entre fluxos (ex.: URLs base, chaves de ambiente).</p></div>
-        </div>
-
-        <!-- SUB: TABLES (placeholder) -->
-        <div id="subTables" style="display:none">
-          <div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div><h2>Tabelas de dados em breve</h2><p>Armazene dados estruturados que seus fluxos podem ler e escrever.</p></div>
-        </div>
-
-        <!-- SUB: FOLDERS -->
-        <div id="subFolders" style="display:none">
-          <div class="toolbar"><button class="btn sm primary" id="btnNewFolder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova pasta</button></div>
-          <div class="grid" id="folderGrid"></div>
-        </div>
       </div>
 
-      <!-- Placeholders para as abas "em breve" -->
-      <div id="tabPessoal" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/></svg></div><h2>Seu espaço pessoal</h2><p>Perfil, preferências e informações da sua conta local.</p></div></div>
-      <div id="tabChat" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h2>Bate-papo com IA — em breve</h2><p>Converse com a inteligência artificial diretamente do A.I.S. para criar e depurar fluxos.</p></div></div>
-      <div id="tabAgentes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg></div><h2>Agentes de IA — em breve</h2><p>Agentes autônomos que executam tarefas complexas usando os seus fluxos como ferramentas.</p></div></div>
-      <div id="tabAutomacoes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg></div><h2>Automações</h2><p>Sinônimo de Fluxos — use a aba "Visão geral" para ver a lista completa.</p></div></div>
+      <!-- Placeholders para as abas do menu lateral -->
+      <div id="tabPastas" style="display:none">
+        <div class="toolbar"><button class="btn sm primary" id="btnNewFolder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova pasta</button></div>
+        <div class="grid" id="folderGrid"></div>
+      </div>
+      <div id="tabCredenciais" style="display:none">
+        <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="searchCreds" type="text" placeholder="Procurar credencial..."/></div><button class="btn sm primary" id="btnNewCred"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Nova credencial</button></div>
+        <div class="grid" id="credGrid"></div>
+      </div>
       <div id="tabModelos" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div><h2>Modelos de fluxo — em breve</h2><p>Comece de um modelo pronto para casos comuns (webhooks, integrações, agentes).</p></div></div>
       <div id="tabIntegracoes" style="display:none"><div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div><h2>Integrações — em breve</h2><p>Conecte serviços externos (Gmail, WhatsApp, Notion, e muito mais) para usar nos fluxos.</p></div></div>
       <div id="tabAjuda" style="display:none"><div class="empty" style="max-width:520px;margin:0 auto"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg></div><h2>Ajuda</h2><p>Bem-vindo ao A.I.S. — sua plataforma de automação. Consulte o README do projeto para o guia completo ou o TERMUX.md para configurar seu servidor local.</p></div></div>
