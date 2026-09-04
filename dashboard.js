@@ -229,7 +229,7 @@ function makeFlowRow(f) {
         <button data-act="folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Mover para pasta</button>
         <button data-act="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Exportar JSON</button>
         <div class="sep"></div>
-        <button data-act="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg>Alterar estado</button>
+        <button data-act="publish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${status==="active"?'<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>':'<circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/>'}</svg>${status==="active"?"Despublicar":"Publicar"}</button>
         <div class="sep"></div>
         <button data-act="del" class="danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir</button>
       </div>
@@ -256,7 +256,11 @@ function makeFlowRow(f) {
     else if (a === "dup") { await AISStore.duplicate(f.id); await refresh(); }
     else if (a === "folder") moveToFolder(f);
     else if (a === "export") exportFlow(f.id);
-    else if (a === "status") changeStatus(f);
+    else if (a === "publish") {
+      const newStatus = (f.status === "active") ? "draft" : "active";
+      await AISStore.update(f.id, { status: newStatus });
+      await refresh();
+    }
     else if (a === "del") {
       if (confirm(`Excluir "${f.name}"?`)) { await AISStore.remove(f.id); await refresh(); }
     }
