@@ -482,34 +482,107 @@ $("btnClearExecs").onclick = async () => {
 };
 
 /* ===== FOLDERS ===== */
+let openFolderId = null;
+const folderState = { q: "", flowQ: "", flowStatus: "all" };
+
 async function renderFolders() {
   await loadAll();
   const g = $("folderGrid");
-  if (!allFolders.length) {
-    g.innerHTML = `<div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><h2>Nenhuma pasta</h2><p>Crie pastas para organizar seus fluxos por projeto ou cliente.</p></div>`;
+  $("pastasListView").style.display = "";
+  $("pastasDetailView").style.display = "none";
+  openFolderId = null;
+
+  let list = allFolders.slice();
+  const q = folderState.q.toLowerCase();
+  if (q) list = list.filter(f => (f.name || "").toLowerCase().includes(q));
+
+  if (!list.length) {
+    g.innerHTML = `<div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><h2>${q?"Nenhum resultado":"Nenhuma pasta"}</h2><p>Crie pastas para organizar seus fluxos por projeto ou cliente.</p></div>`;
     return;
   }
   g.innerHTML = "";
-  allFolders.forEach(f => {
+  list.forEach(f => {
     const cnt = allFlows.filter(fl => fl.folderId === f.id).length;
     const card = document.createElement("div"); card.className = "card-basic";
     card.style.cursor = "pointer";
-    card.innerHTML = `<div style="display:flex;align-items:center;gap:12px"><div style="width:14px;height:14px;border-radius:50%;background:${f.color||"var(--blue)"};flex:0 0 auto"></div><div style="flex:1;min-width:0"><h3></h3><div class="desc">${cnt} ${cnt===1?"fluxo":"fluxos"}</div></div><button class="btn sm fe">Editar</button><button class="btn sm danger fd">×</button></div>`;
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:14px;height:14px;border-radius:50%;background:${f.color||"var(--blue)"};flex:0 0 auto"></div>
+        <div style="flex:1;min-width:0">
+          <h3></h3>
+          <div class="desc">${cnt} ${cnt===1?"fluxo":"fluxos"}</div>
+        </div>
+        <div class="menu-wrap">
+          <button class="icon-btn sm menu-toggle" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+          <div class="menu">
+            <button data-act="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Renomear</button>
+            <div class="sep"></div>
+            <button data-act="del" class="danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir</button>
+          </div>
+        </div>
+      </div>`;
     card.querySelector("h3").textContent = f.name;
+    // Clicar no card abre a pasta
     card.onclick = e => {
-      if (e.target.closest("button")) return;
-      state.folderFilter = f.id;
-      document.querySelector('#subtabs .tab[data-sub="flows"]').click();
+      if (e.target.closest(".menu-wrap")) return;
+      openFolder(f.id);
     };
-    card.querySelector(".fe").onclick = e => { e.stopPropagation(); editFolder(f.id); };
-    card.querySelector(".fd").onclick = async e => {
+    // Menu 3 pontos
+    const menu = card.querySelector(".menu");
+    card.querySelector(".menu-toggle").onclick = e => {
       e.stopPropagation();
-      if (confirm(`Excluir pasta "${f.name}"? Os fluxos não serão excluídos.`)) { await AISStore.removeFolder(f.id); await refresh(); renderFolders(); }
+      document.querySelectorAll(".menu.open").forEach(m => m !== menu && m.classList.remove("open"));
+      menu.classList.toggle("open");
     };
+    menu.querySelectorAll("button").forEach(b => b.onclick = async e => {
+      e.stopPropagation(); menu.classList.remove("open");
+      if (b.dataset.act === "rename") {
+        const n = prompt("Novo nome:", f.name);
+        if (n && n.trim()) { await AISStore.updateFolder(f.id, { name: n.trim() }); await refresh(); renderFolders(); }
+      } else if (b.dataset.act === "del") {
+        if (confirm(`Excluir pasta "${f.name}"? Os fluxos não serão excluídos.`)) { await AISStore.removeFolder(f.id); await refresh(); renderFolders(); }
+      }
+    });
     g.appendChild(card);
   });
 }
+
+function openFolder(folderId) {
+  openFolderId = folderId;
+  folderState.flowQ = "";
+  folderState.flowStatus = "all";
+  if ($("searchFolderFlows")) $("searchFolderFlows").value = "";
+  if ($("filterFolderFlowStatus")) $("filterFolderFlowStatus").value = "all";
+  $("pastasListView").style.display = "none";
+  $("pastasDetailView").style.display = "";
+  const folder = allFolders.find(f => f.id === folderId);
+  $("folderDetailName").textContent = folder?.name || "Pasta";
+  $("folderDetailDot").style.background = folder?.color || "var(--blue)";
+  renderFolderFlows();
+}
+
+function renderFolderFlows() {
+  let list = allFlows.filter(f => f.folderId === openFolderId);
+  const q = folderState.flowQ.toLowerCase();
+  if (q) list = list.filter(f => (f.name || "").toLowerCase().includes(q));
+  if (folderState.flowStatus !== "all") list = list.filter(f => (f.status || "draft") === folderState.flowStatus);
+  list.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
+
+  const el = $("folderFlowList");
+  if (!list.length) {
+    el.innerHTML = `<div class="empty"><div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg></div><h2>${q||folderState.flowStatus!=="all"?"Nenhum resultado":"Pasta vazia"}</h2><p>Nenhum fluxo nesta pasta.</p></div>`;
+    return;
+  }
+  el.innerHTML = "";
+  for (const f of list) el.appendChild(makeFlowRow(f));
+}
+
+$("searchFolders").oninput = e => { folderState.q = e.target.value.trim(); renderFolders(); };
 $("btnNewFolder").onclick = () => editFolder(null);
+$("btnBackFolders").onclick = () => renderFolders();
+$("searchFolderFlows").oninput = e => { folderState.flowQ = e.target.value.trim(); renderFolderFlows(); };
+$("filterFolderFlowStatus").onchange = e => { folderState.flowStatus = e.target.value; renderFolderFlows(); };
+
 async function editFolder(id) {
   const f = id ? allFolders.find(x => x.id === id) : null;
   const colors = ["#3B82F6","#8B5CF6","#10B981","#F97316","#EC4899","#EAB308","#6B7280"];
