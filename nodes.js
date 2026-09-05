@@ -396,9 +396,11 @@ function setupCanvasDeselect(){
 /* ===== Config Panel ===== */
 function openConfig(nodeId){
   const node=findNode(nodeId);if(!node)return;const def=TYPES[node.type];if(!def)return;
-  cfgOpen=true; closeExecPanel();
+  const readonly = AIS.execViewMode;
+  cfgOpen=true;
+  if(!readonly) closeExecPanel();
   let h=`<div class="cfg-head"><div class="cfg-head-icon" style="background:${def.color}">${def.icon}</div>
-    <input class="cfg-name" value="${esc(node.name)}" spellcheck="false"/>
+    <input class="cfg-name" value="${esc(node.name)}" spellcheck="false" ${readonly?"disabled":""}/>
     <button class="cfg-close" id="cfgClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
   </div><div class="cfg-scroll">`;
   // Webhook URL
@@ -411,47 +413,52 @@ function openConfig(nodeId){
   h+='<div class="cfg-sec"><div class="cfg-sec-label">Configurações</div>';
   for(const f of def.fields){
     if(f.showIf){const[k,v]=Object.entries(f.showIf)[0];if(node.config[k]!==v)continue;}
-    h+=renderField(f,node.config[f.key]);
+    h+=renderField(f,node.config[f.key],readonly);
   }
   // KV editor for Set manual mode
   if(node.type==="set"&&node.config.mode!=="json") h+='<label class="cfg-field"><span class="cfg-label">Campos</span><div id="kvEditor"></div></label>';
   h+="</div>";
-  // Test (webhook)
-  if(node.type==="webhook"&&AISStore.isServer()){
+  // Test (webhook) - hide in readonly
+  if(!readonly && node.type==="webhook"&&AISStore.isServer()){
     h+=`<div class="cfg-sec"><div class="cfg-sec-label">Testar</div>
       <button class="btn cfg-test-btn" id="cfgTestBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>Verificar dados</button>
       <div class="cfg-test-data" id="cfgTestData">Nenhum dado recebido ainda.</div></div>`;
   }
-  // Delete
-  h+=`<div class="cfg-sec cfg-sec-danger"><button class="btn cfg-delete" id="cfgDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir nó</button></div></div>`;
+  // Delete - hide in readonly
+  if(!readonly){
+    h+=`<div class="cfg-sec cfg-sec-danger"><button class="btn cfg-delete" id="cfgDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir nó</button></div>`;
+  }
+  h+="</div>";
   $cfgPanel.innerHTML=h; $cfgPanel.classList.add("open"); $cfgScrim.classList.add("open");
   document.getElementById("cfgClose").onclick=closeConfig; $cfgScrim.onclick=closeConfig;
-  const nameInp=$cfgPanel.querySelector(".cfg-name");
-  nameInp.addEventListener("input",()=>{node.name=nameInp.value||def.name;refreshNodeEl(node);saveLater();});
-  $cfgPanel.querySelectorAll("[data-cfg]").forEach(inp=>{const k=inp.dataset.cfg;
-    const handler=()=>{node.config[k]=inp.type==="number"?Number(inp.value):inp.value;refreshNodeEl(node);saveLater();
-      if(["auth","mode"].includes(k))openConfig(nodeId);
-      if(k==="path"&&node.type==="webhook"){const u=document.getElementById("cfgUrl");if(u)u.textContent=`${location.origin}/hook/${node.config.path||"..."}`;}
-    };inp.addEventListener("input",handler);inp.addEventListener("change",handler);
-  });
-  // Key-value pairs for Set node
-  if(node.type==="set"&&node.config.mode!=="json") setupKVEditor(node);
+  if(!readonly){
+    const nameInp=$cfgPanel.querySelector(".cfg-name");
+    nameInp.addEventListener("input",()=>{node.name=nameInp.value||def.name;refreshNodeEl(node);saveLater();});
+    $cfgPanel.querySelectorAll("[data-cfg]").forEach(inp=>{const k=inp.dataset.cfg;
+      const handler=()=>{node.config[k]=inp.type==="number"?Number(inp.value):inp.value;refreshNodeEl(node);saveLater();
+        if(["auth","mode"].includes(k))openConfig(nodeId);
+        if(k==="path"&&node.type==="webhook"){const u=document.getElementById("cfgUrl");if(u)u.textContent=`${location.origin}/hook/${node.config.path||"..."}`;}
+      };inp.addEventListener("input",handler);inp.addEventListener("change",handler);
+    });
+    if(node.type==="set"&&node.config.mode!=="json") setupKVEditor(node);
+    const testBtn=document.getElementById("cfgTestBtn"); if(testBtn)testBtn.onclick=()=>testWebhook(node);
+    document.getElementById("cfgDelete").onclick=()=>{if(confirm("Excluir este nó?"))removeNode(node.id);};
+  }
   const copyBtn=document.getElementById("cfgCopy"); if(copyBtn)copyBtn.onclick=copyUrl;
-  const testBtn=document.getElementById("cfgTestBtn"); if(testBtn)testBtn.onclick=()=>testWebhook(node);
-  document.getElementById("cfgDelete").onclick=()=>{if(confirm("Excluir este nó?"))removeNode(node.id);};
 }
 function closeConfig(){cfgOpen=false;$cfgPanel.classList.remove("open");$cfgScrim.classList.remove("open");}
 
-function renderField(f,val){
+function renderField(f,val,readonly){
   const v=val!==undefined?val:(f.default??"");
+  const dis=readonly?"disabled":"";
   if(f.type==="select"){
     const opts=f.options.map(o=>{const ov=typeof o==="object"?o.value:o;const ol=typeof o==="object"?o.label:o;
       return`<option value="${ov}"${ov==v?" selected":""}>${esc(ol)}</option>`;}).join("");
-    return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><select class="cfg-input" data-cfg="${f.key}">${opts}</select></label>`;
+    return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><select class="cfg-input" data-cfg="${f.key}" ${dis}>${opts}</select></label>`;
   }
-  if(f.type==="number")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="number" class="cfg-input" data-cfg="${f.key}" value="${v}" min="${f.min??0}" max="${f.max??999}"/></label>`;
-  if(f.type==="textarea")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><textarea class="cfg-input cfg-textarea" data-cfg="${f.key}" rows="${f.rows||6}" placeholder="${f.placeholder||""}">${esc(String(v))}</textarea></label>`;
-  return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="${f.type||"text"}" class="cfg-input" data-cfg="${f.key}" value="${esc(String(v))}" placeholder="${f.placeholder||""}"/></label>`;
+  if(f.type==="number")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="number" class="cfg-input" data-cfg="${f.key}" value="${v}" min="${f.min??0}" max="${f.max??999}" ${dis}/></label>`;
+  if(f.type==="textarea")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><textarea class="cfg-input cfg-textarea" data-cfg="${f.key}" rows="${f.rows||6}" placeholder="${f.placeholder||""}" ${dis}>${esc(String(v))}</textarea></label>`;
+  return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="${f.type||"text"}" class="cfg-input" data-cfg="${f.key}" value="${esc(String(v))}" placeholder="${f.placeholder||""}" ${dis}/></label>`;
 }
 function setupKVEditor(node){
   const wrap=document.getElementById("kvEditor");if(!wrap)return;
@@ -570,6 +577,7 @@ async function showExecOnCanvas(execId){
     if(exec.snapshot && exec.snapshot.nodes){
       // Salvar fluxo original na primeira vez
       if(!originalFlow) originalFlow = { nodes:[...(AIS.flow.nodes||[])], edges:[...(AIS.flow.edges||[])] };
+      AIS.execViewMode = true;
       // Limpar canvas atual
       $world.querySelectorAll(".ais-node").forEach(n=>n.remove());
       document.getElementById("edges").innerHTML="";
@@ -616,6 +624,8 @@ function restoreOriginalFlow(){
   document.getElementById("execDetailBanner").innerHTML="";
   $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
   document.getElementById("execListScroll").querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
+  AIS.execViewMode = false;
+  closeConfig();
   // Restaurar fluxo original
   if(originalFlow){
     $world.querySelectorAll(".ais-node").forEach(n=>n.remove());
