@@ -9,6 +9,7 @@
 const TYPES = {};
 let selectedId = null, cfgOpen = false, execPanelOpen = false;
 let connecting = null; // { fromId, fromPort }
+let clipboardNode = null, replaceNodeId = null;
 let $world, $cfgPanel, $cfgScrim, $palBody, $palEmpty, $execPanel, $edgesSvg;
 
 const esc = s => { const d=document.createElement("div"); d.textContent=s; return d.innerHTML; };
@@ -52,7 +53,7 @@ function populatePalette(){
       it.innerHTML=`<div class="pal-icon" style="background:${def.color}">${def.icon}</div>
         <div class="pal-info"><b>${def.name}</b><span>${def.desc}</span></div>
         ${def.trigger?'<span class="pal-badge">Gatilho</span>':""}`;
-      it.onclick=()=>{addNodeToCenter(def.type);closePalette();};
+      it.onclick=()=>{if(replaceNodeId){replaceNodeWith(replaceNodeId,def.type);replaceNodeId=null;}else{addNodeToCenter(def.type);}closePalette();};
       $palBody.insertBefore(it,$palEmpty);
     }
   }
@@ -70,6 +71,7 @@ function closePalette(){
   document.getElementById("scrim").classList.remove("open");
   document.getElementById("palette").classList.remove("open");
   const inp=document.getElementById("paletteSearch"); inp.value=""; inp.dispatchEvent(new Event("input"));
+  replaceNodeId=null;
 }
 
 /* ===== Histórico (undo/redo) ===== */
@@ -176,9 +178,25 @@ function renderAllNodes(){ if(!AIS.flow?.nodes)return; for(const n of AIS.flow.n
 function renderNode(node){
   const def=TYPES[node.type]; if(!def)return;
   const el=document.createElement("div"); el.className="ais-node"; el.dataset.id=node.id;
+  if(node.disabled) el.classList.add("disabled");
   el.style.transform=`translate(${node.x}px,${node.y}px)`;
   const hasIf=node.type==="if";
   el.innerHTML=`
+    <div class="node-toolbar">
+      <button class="ntb" data-act="run" title="Executar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></svg></button>
+      <button class="ntb${node.disabled?' active-toggle':''}" data-act="toggle" title="${node.disabled?'Ativar':'Desativar'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg></button>
+      <button class="ntb ntb-danger" data-act="del" title="Excluir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+      <div class="ntb-more-wrap">
+        <button class="ntb" data-act="more" title="Mais opções"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+        <div class="node-menu">
+          <button data-act="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Renomear</button>
+          <button data-act="replace"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>Substituir</button>
+          <div class="nm-sep"></div>
+          <button data-act="copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar</button>
+          <button data-act="dup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"/></svg>Duplicar</button>
+        </div>
+      </div>
+    </div>
     ${def.trigger?"":'<div class="node-port port-in" data-port="in"></div>'}
     <div class="node-body">
       <div class="node-icon" style="background:${def.color}">${def.icon}</div>
@@ -198,6 +216,36 @@ function renderNode(node){
     const now=Date.now();
     if(now-lastClickTime<500){ lastClickTime=0; openIt(e); }
     else lastClickTime=now;
+  });
+  // --- Toolbar handlers ---
+  const toolbar=el.querySelector(".node-toolbar");
+  const nodeMenu=el.querySelector(".node-menu");
+  el.querySelectorAll(".ntb[data-act]").forEach(btn=>{
+    btn.addEventListener("click",e=>{
+      e.stopPropagation();
+      const act=btn.dataset.act;
+      if(act==="run") runFlow();
+      else if(act==="toggle") toggleDisable(node.id);
+      else if(act==="del"){ if(confirm("Excluir este nó?")) removeNode(node.id); }
+      else if(act==="more"){
+        document.querySelectorAll(".node-menu.open").forEach(m=>m.classList.remove("open"));
+        document.querySelectorAll(".node-toolbar.pinned").forEach(t=>t.classList.remove("pinned"));
+        nodeMenu.classList.toggle("open");
+        toolbar.classList.toggle("pinned",nodeMenu.classList.contains("open"));
+      }
+    });
+  });
+  nodeMenu.querySelectorAll("button[data-act]").forEach(btn=>{
+    btn.addEventListener("click",e=>{
+      e.stopPropagation();
+      nodeMenu.classList.remove("open");
+      toolbar.classList.remove("pinned");
+      const act=btn.dataset.act;
+      if(act==="rename") renameNodePrompt(node.id);
+      else if(act==="replace") startReplace(node.id);
+      else if(act==="copy") copyNode(node.id);
+      else if(act==="dup") duplicateNode(node.id);
+    });
   });
   $world.appendChild(el);
 }
@@ -389,6 +437,8 @@ function deselectAll(){selectedId=null;$world.querySelectorAll(".ais-node.select
 function setupCanvasDeselect(){
   document.getElementById("canvas").addEventListener("click",e=>{
     if(connecting){cancelConnection();return;}
+    document.querySelectorAll(".node-menu.open").forEach(m=>m.classList.remove("open"));
+    document.querySelectorAll(".node-toolbar.pinned").forEach(t=>t.classList.remove("pinned"));
     if(e.target.id==="canvas"||e.target.id==="grid"||e.target.id==="world"){deselectAll();closeConfig();}
   });
 }
@@ -493,6 +543,58 @@ function copyUrl(){const u=document.getElementById("cfgUrl");if(!u)return;
   const b=document.getElementById("cfgCopy");if(b){b.style.color="#3ecf8e";setTimeout(()=>b.style.color="",800);}
 }
 
+/* ===== Node Toolbar Actions ===== */
+function toggleDisable(id){
+  const node=findNode(id); if(!node)return;
+  node.disabled=!node.disabled;
+  const el=$world.querySelector(`.ais-node[data-id="${id}"]`);
+  if(el){
+    el.classList.toggle("disabled",node.disabled);
+    const btn=el.querySelector('.ntb[data-act="toggle"]');
+    if(btn){ btn.classList.toggle("active-toggle",node.disabled); btn.title=node.disabled?"Ativar":"Desativar"; }
+  }
+  pushHistory(); save();
+}
+function duplicateNode(id){
+  const node=findNode(id); if(!node)return;
+  const newNode={id:uid(),type:node.type,name:node.name+" (cópia)",x:node.x+60,y:node.y+60,config:structuredClone(node.config),disabled:false};
+  AIS.flow.nodes.push(newNode); renderNode(newNode); AIS.refreshEmpty(); pushHistory(); save();
+}
+function copyNode(id){
+  const node=findNode(id); if(!node)return;
+  clipboardNode=structuredClone(node);
+}
+function pasteNode(){
+  if(!clipboardNode||!AIS.flow)return;
+  const cv=document.getElementById("canvas"),r=cv.getBoundingClientRect();
+  const newNode={...structuredClone(clipboardNode),id:uid(),name:clipboardNode.name+" (cópia)",
+    x:Math.round((r.width/2-AIS.view.x)/AIS.view.k),y:Math.round((r.height/2-AIS.view.y)/AIS.view.k),disabled:false};
+  AIS.flow.nodes.push(newNode); renderNode(newNode); AIS.refreshEmpty(); pushHistory(); save();
+}
+function renameNodePrompt(id){
+  const node=findNode(id); if(!node)return;
+  const n=prompt("Novo nome:",node.name);
+  if(n&&n.trim()){ node.name=n.trim(); refreshNodeEl(node); pushHistory(); save(); }
+}
+function startReplace(id){
+  replaceNodeId=id;
+  document.getElementById("scrim").classList.add("open");
+  document.getElementById("palette").classList.add("open");
+  setTimeout(()=>document.getElementById("paletteSearch").focus(),260);
+}
+function replaceNodeWith(id,newType){
+  const node=findNode(id); const def=TYPES[newType]; if(!node||!def)return;
+  const wasTrigger=TYPES[node.type]?.trigger; const isTrigger=def.trigger;
+  pushHistory();
+  node.type=newType; node.name=def.name; node.config=structuredClone(def.defaults);
+  if(wasTrigger!==isTrigger&&isTrigger) AIS.flow.edges=(AIS.flow.edges||[]).filter(e=>e.to!==id);
+  // IF <-> non-IF: limpar edges de portas que não existem mais
+  const wasIf=TYPES[node.type]?.type==="if"; // já trocou, checar pelo novo
+  if(newType!=="if") AIS.flow.edges=(AIS.flow.edges||[]).filter(e=>!(e.from===id&&(e.fromPort==="true"||e.fromPort==="false")));
+  const el=$world.querySelector(`.ais-node[data-id="${id}"]`); if(el) el.remove();
+  renderNode(node); renderEdges(); save();
+}
+
 /* ===== Execution Panel ===== */
 function openExecPanel(){
   closeConfig(); execPanelOpen=true;
@@ -578,6 +680,7 @@ async function showExecOnCanvas(execId){
       // Salvar fluxo original na primeira vez
       if(!originalFlow) originalFlow = { nodes:[...(AIS.flow.nodes||[])], edges:[...(AIS.flow.edges||[])] };
       AIS.execViewMode = true;
+      $world.classList.add("exec-view");
       // Limpar canvas atual
       $world.querySelectorAll(".ais-node").forEach(n=>n.remove());
       document.getElementById("edges").innerHTML="";
@@ -625,6 +728,7 @@ function restoreOriginalFlow(){
   $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
   document.getElementById("execListScroll").querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
   AIS.execViewMode = false;
+  $world.classList.remove("exec-view");
   closeConfig();
   // Restaurar fluxo original
   if(originalFlow){
@@ -669,6 +773,7 @@ function setupKeys(){
     if(e.key==="Escape"){if(cfgOpen)closeConfig();if(execPanelOpen)closeExecPanel();cancelConnection();}
     if((e.ctrlKey||e.metaKey)&&e.key==="z"&&!e.shiftKey){e.preventDefault();undo();}
     if((e.ctrlKey||e.metaKey)&&(e.key==="y"||(e.key==="z"&&e.shiftKey))){e.preventDefault();redo();}
+    if((e.ctrlKey||e.metaKey)&&e.key==="v"){e.preventDefault();pasteNode();}
   });
 }
 
@@ -676,5 +781,5 @@ function setupKeys(){
 // Mantém register já exposto e adiciona os métodos internos.
 Object.assign(window.AISNodes, {init,TYPES,addNode:addNodeToCenter,removeNode,openConfig,closeConfig,
   openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,loadExecList,runFlow,
-  undo,redo,autoLayout});
+  undo,redo,autoLayout,toggleDisable,duplicateNode,pasteNode});
 })();
