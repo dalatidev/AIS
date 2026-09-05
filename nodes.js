@@ -8,6 +8,7 @@
 "use strict";
 const TYPES = {};
 let selectedId = null, cfgOpen = false, execPanelOpen = false;
+const selectedIds = new Set();
 let connecting = null; // { fromId, fromPort }
 let clipboardNode = null, replaceNodeId = null;
 let $world, $cfgPanel, $cfgScrim, $palBody, $palEmpty, $execPanel, $edgesSvg;
@@ -270,20 +271,34 @@ function refreshNodeEl(node){
   el.querySelector(".node-desc").innerHTML=getSubtitle(node);
 }
 
-/* ===== Drag ===== */
+/* ===== Drag (group-aware) ===== */
 function setupDrag(el,node){
-  let dragging=false,sx,sy,nx,ny;
+  let dragging=false,sx,sy,dragGroup=[];
   function onDown(e){
     if(e.target.classList.contains("node-port"))return; e.stopPropagation();
-    const p=e.touches?e.touches[0]:e; sx=p.clientX;sy=p.clientY;nx=node.x;ny=node.y;dragging=false;
-    // Seleciona logo (não abre config — isso é só no dblclick)
-    selectNode(node.id);
+    const p=e.touches?e.touches[0]:e; sx=p.clientX;sy=p.clientY;dragging=false;
+    // Seleção: Shift adiciona, click normal seleciona só este
+    if(e.shiftKey){
+      if(selectedIds.has(node.id)){ selectedIds.delete(node.id); el.classList.remove("selected"); selectedId=selectedIds.values().next().value||null; }
+      else{ selectedIds.add(node.id); el.classList.add("selected"); selectedId=node.id; }
+    } else if(!selectedIds.has(node.id)){
+      selectNode(node.id);
+    } else { selectedId=node.id; }
+    // Montar grupo de arraste
+    const ids=selectedIds.has(node.id)?[...selectedIds]:[node.id];
+    dragGroup=ids.map(id=>{const n=findNode(id);return n?{node:n,sx:n.x,sy:n.y}:null;}).filter(Boolean);
     const onMove=e2=>{const p2=e2.touches?e2.touches[0]:e2;const dx=(p2.clientX-sx)/AIS.view.k;const dy=(p2.clientY-sy)/AIS.view.k;
-      if(!dragging&&Math.abs(dx)+Math.abs(dy)<3)return;dragging=true;el.classList.add("dragging");
-      node.x=Math.round(nx+dx);node.y=Math.round(ny+dy);el.style.transform=`translate(${node.x}px,${node.y}px)`;renderEdges();};
+      if(!dragging&&Math.abs(dx)+Math.abs(dy)<3)return;dragging=true;
+      for(const g of dragGroup){
+        g.node.x=Math.round(g.sx+dx);g.node.y=Math.round(g.sy+dy);
+        const nel=$world.querySelector(`.ais-node[data-id="${g.node.id}"]`);
+        if(nel){nel.style.transform=`translate(${g.node.x}px,${g.node.y}px)`;nel.classList.add("dragging");}
+      }
+      renderEdges();};
     const onUp=()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);
       window.removeEventListener("touchmove",onMove);window.removeEventListener("touchend",onUp);
-      el.classList.remove("dragging");if(dragging){pushHistory();save();}};
+      $world.querySelectorAll(".ais-node.dragging").forEach(n=>n.classList.remove("dragging"));
+      if(dragging){pushHistory();save();}};
     window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
     window.addEventListener("touchmove",onMove,{passive:true});window.addEventListener("touchend",onUp);
   }
@@ -431,15 +446,32 @@ function renderEdges(){
   }
 }
 
-/* ===== Selection ===== */
-function selectNode(id){deselectAll();selectedId=id;$world.querySelector(`.ais-node[data-id="${id}"]`)?.classList.add("selected");}
-function deselectAll(){selectedId=null;$world.querySelectorAll(".ais-node.selected").forEach(e=>e.classList.remove("selected"));}
+/* ===== Selection (multi-select) ===== */
+function selectNode(id,additive){
+  if(!additive){
+    selectedIds.forEach(sid=>{if(sid!==id)$world.querySelector(`.ais-node[data-id="${sid}"]`)?.classList.remove("selected");});
+    selectedIds.clear();
+  }
+  selectedId=id; selectedIds.add(id);
+  $world.querySelector(`.ais-node[data-id="${id}"]`)?.classList.add("selected");
+}
+function deselectAll(){selectedId=null;selectedIds.clear();$world.querySelectorAll(".ais-node.selected").forEach(e=>e.classList.remove("selected"));}
+function selectMultiple(ids){
+  deselectAll();
+  for(const id of ids){ selectedIds.add(id); $world.querySelector(`.ais-node[data-id="${id}"]`)?.classList.add("selected"); }
+  if(ids.length===1) selectedId=ids[0];
+  else if(ids.length>1) selectedId=ids[0];
+}
 function setupCanvasDeselect(){
   document.getElementById("canvas").addEventListener("click",e=>{
     if(connecting){cancelConnection();return;}
     document.querySelectorAll(".node-menu.open").forEach(m=>m.classList.remove("open"));
     document.querySelectorAll(".node-toolbar.pinned").forEach(t=>t.classList.remove("pinned"));
-    if(e.target.id==="canvas"||e.target.id==="grid"||e.target.id==="world"){deselectAll();closeConfig();}
+    // Desseleção e close config são feitos pelo mouseup do box select em editor.html
+    // Só desseleciona aqui se não veio de box select
+    if(!window._aisBoxDone && (e.target.id==="canvas"||e.target.id==="grid"||e.target.id==="world"||e.target.id==="selectBox")){
+      deselectAll();closeConfig();
+    }
   });
 }
 
@@ -781,5 +813,5 @@ function setupKeys(){
 // Mantém register já exposto e adiciona os métodos internos.
 Object.assign(window.AISNodes, {init,TYPES,addNode:addNodeToCenter,removeNode,openConfig,closeConfig,
   openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,loadExecList,runFlow,
-  undo,redo,autoLayout,toggleDisable,duplicateNode,pasteNode});
+  undo,redo,autoLayout,toggleDisable,duplicateNode,pasteNode,selectMultiple,deselectAll});
 })();
