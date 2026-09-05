@@ -362,9 +362,9 @@ async function handleHook(req, res, url) {
 
   if (!targetNode) return json(res, 404, { error: `Nenhum webhook com caminho '${hookPath}'.` });
 
-  // Bloqueia execução se fluxo está pausado
-  if (targetFlow.status === "paused") {
-    return json(res, 503, { error: "Fluxo pausado.", flowId: targetFlow.id });
+  // Só executa se o fluxo estiver publicado (active)
+  if (targetFlow.status !== "active") {
+    return json(res, 503, { error: "Fluxo não está publicado.", flowId: targetFlow.id, status: targetFlow.status || "draft" });
   }
 
   // Verifica método
