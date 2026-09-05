@@ -704,6 +704,65 @@
   .exec-banner-err span{color:var(--muted);font-family:monospace;font-size:11px}
   .exec-banner-close{flex:0 0 auto;width:32px;height:32px;display:grid;place-items:center;border-radius:6px;border:none;background:none;color:var(--muted);cursor:pointer}
   .exec-banner-close:hover{background:var(--surface-2);color:var(--white)}
+
+  /* ---- Node hover toolbar (n8n-style) ---- */
+  .node-toolbar {
+    position:absolute;
+    top:-42px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:2px;
+    padding:3px; background:var(--surface);
+    border:1px solid var(--line); border-radius:9px;
+    opacity:0; pointer-events:none;
+    transition:opacity .15s;
+    z-index:20;
+    box-shadow:0 4px 16px rgba(0,0,0,.45);
+    white-space:nowrap;
+  }
+  .ais-node:hover > .node-toolbar,
+  .node-toolbar.pinned { opacity:1; pointer-events:auto; }
+  .ais-node.dragging > .node-toolbar,
+  .exec-view .node-toolbar { display:none !important; }
+
+  .ntb {
+    width:28px; height:28px; border-radius:7px; border:none;
+    background:transparent; color:var(--muted);
+    cursor:pointer; display:grid; place-items:center;
+    transition:background .12s, color .12s;
+  }
+  .ntb:hover { background:var(--surface-2); color:var(--white); }
+  .ntb.ntb-danger:hover { color:#ff5a6a; background:rgba(255,90,106,.1); }
+  .ntb svg { width:14px; height:14px; }
+  .ntb.active-toggle { color:#EAB308; }
+
+  .ntb-more-wrap { position:relative; }
+  .node-menu {
+    position:absolute; top:100%; right:-4px;
+    min-width:170px; padding:5px;
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:10px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);
+    opacity:0; pointer-events:none;
+    transform:translateY(-4px);
+    transition:opacity .12s, transform .12s;
+    z-index:30; margin-top:6px;
+  }
+  .node-menu.open { opacity:1; pointer-events:auto; transform:translateY(0); }
+  .node-menu button {
+    display:flex; align-items:center; gap:10px;
+    width:100%; padding:8px 12px; border:none;
+    background:transparent; color:var(--white);
+    font-size:13px; font-family:inherit; font-weight:500;
+    border-radius:7px; cursor:pointer;
+    transition:background .12s;
+    white-space:nowrap;
+  }
+  .node-menu button:hover { background:var(--surface-2); }
+  .node-menu button svg { width:15px; height:15px; flex:0 0 auto; color:var(--muted); }
+  .node-menu .nm-sep { height:1px; background:var(--line-soft); margin:4px 0; }
+
+  /* Disabled node */
+  .ais-node.disabled > .node-body { opacity:.4; border-style:dashed !important; }
+  .ais-node.disabled > .node-port { opacity:.4; }
 </style>
 </head>
 <body>
