@@ -31,6 +31,12 @@ class Engine {
   async _exec(nodeId, input) {
     const node = this.nodesMap.get(nodeId);
     if(!node) return;
+    // Nó desativado: pula a execução mas repassa o input para os nós seguintes
+    if(node.disabled){
+      this.steps.push({nodeId,nodeName:node.name,nodeType:node.type,status:"skipped",startedAt:Date.now(),finishedAt:Date.now(),input:this._safe(input),output:null,error:null});
+      for(const e of this.edges.filter(e=>e.from===nodeId)) await this._exec(e.to,input);
+      return;
+    }
     const step = { nodeId, nodeName:node.name, nodeType:node.type, status:"running",
       startedAt:Date.now(), input: this._safe(input), output:null, error:null };
     this.steps.push(step);
