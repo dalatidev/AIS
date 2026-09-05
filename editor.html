@@ -118,6 +118,14 @@
   .doc-status.paused { color:#EAB308; }
   .doc-status.paused .st-dot { background:#EAB308; }
   .doc-status.error { color:#ff5a6a; }
+
+  .save-indicator{font-size:11px;color:var(--muted-2);transition:opacity .3s;white-space:nowrap}
+  .save-indicator.saving{color:var(--muted)}
+  .save-indicator.saved{color:#3ecf8e}
+
+  #btnPublish.published{background:rgba(62,207,142,.12);color:#3ecf8e;border-color:rgba(62,207,142,.25)}
+  #btnPublish.published:hover{background:rgba(62,207,142,.18)}
+  #pubIconOn,#pubIconOff{width:16px;height:16px}
   .doc-status.error .st-dot { background:#ff5a6a; }
 
   /* Abas Editor / Execuções (centralizadas) */
@@ -744,9 +752,12 @@
       <span class="st-lbl">Rascunho</span>
     </div>
 
-    <button class="btn" id="btnSave" title="Salvar fluxo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
-      <span class="label-full">Salvar</span>
+    <span class="save-indicator" id="saveIndicator"></span>
+
+    <button class="btn" id="btnPublish" title="Publicar ou despublicar fluxo">
+      <svg id="pubIconOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+      <svg id="pubIconOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg>
+      <span class="label-full" id="pubLabel">Publicar</span>
     </button>
 
     <button class="btn primary" id="btnRun" title="Executar fluxo">
@@ -1020,13 +1031,65 @@
   document.getElementById("btnEmptyAdd").onclick = openPalette;
   scrim.onclick = closePalette;
 
-  /* ---------- Header buttons (stubs until logic is added) ---------- */
+  /* ---------- Header buttons ---------- */
   function flash(msg) {
     statusEl.textContent = msg;
     clearTimeout(flash._t);
     flash._t = setTimeout(() => statusEl.textContent = "Pronto", 1800);
   }
-  document.getElementById("btnSave").onclick = async () => { await persist(); flash("Fluxo salvo"); };
+
+  /* Auto-save debounced */
+  let autoSaveTimer = null;
+  const saveIndicator = document.getElementById("saveIndicator");
+  function triggerAutoSave() {
+    if (!flow) return;
+    saveIndicator.textContent = "Alterações...";
+    saveIndicator.className = "save-indicator saving";
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(async () => {
+      await persist();
+      saveIndicator.textContent = "✓ Salvo";
+      saveIndicator.className = "save-indicator saved";
+      setTimeout(() => { saveIndicator.textContent = ""; saveIndicator.className = "save-indicator"; }, 2000);
+    }, 800);
+  }
+  // Observar mudanças no flow para auto-save
+  const origPersist = persist;
+  // Hook no AIS para detectar mudanças
+  window.addEventListener("ais:changed", triggerAutoSave);
+
+  /* Publicar / Despublicar */
+  const btnPublish = document.getElementById("btnPublish");
+  const pubLabel = document.getElementById("pubLabel");
+  const pubIconOn = document.getElementById("pubIconOn");
+  const pubIconOff = document.getElementById("pubIconOff");
+
+  function updatePublishBtn() {
+    if (!flow) return;
+    const isActive = flow.status === "active";
+    if (isActive) {
+      btnPublish.classList.add("published");
+      pubLabel.textContent = "Despublicar";
+      pubIconOn.style.display = "none";
+      pubIconOff.style.display = "";
+    } else {
+      btnPublish.classList.remove("published");
+      pubLabel.textContent = "Publicar";
+      pubIconOn.style.display = "";
+      pubIconOff.style.display = "none";
+    }
+  }
+
+  btnPublish.onclick = async () => {
+    if (!flow) { flash("Abra um fluxo primeiro"); return; }
+    const newStatus = flow.status === "active" ? "draft" : "active";
+    flow.status = newStatus;
+    await persist();
+    applyStatus(newStatus);
+    updatePublishBtn();
+    flash(newStatus === "active" ? "✓ Fluxo publicado — webhooks ativos" : "Fluxo despublicado");
+  };
+
   document.getElementById("btnRun").onclick  = () => { if(typeof AISNodes!=="undefined") AISNodes.openExecPanel(); else flash("Carregue um fluxo primeiro"); };
 
   // Sidebar do editor
@@ -1163,18 +1226,10 @@
     applyTags(flow.tags); await persist();
   };
 
-  // Status: clicar para trocar
-  document.getElementById("flowStatusPill").onclick = async () => {
-    const opts = Object.entries(STATUS_LABELS);
-    const cur = flow?.status || "draft";
-    const menu = opts.map(([k,l],i) => `${i+1}) ${l}${k===cur?"  ←":""}`).join("\n");
-    const ans = prompt("Alterar estado do fluxo:\n\n"+menu+"\n\nDigite o número:", "1");
-    if (!ans) return;
-    const idx = parseInt(ans,10)-1;
-    if (idx < 0 || idx >= opts.length) return;
-    flow.status = opts[idx][0];
-    applyStatus(flow.status); await persist();
-    flash("Estado: "+opts[idx][1]);
+  // Status pill: agora só mostra info, não abre menu
+  document.getElementById("flowStatusPill").onclick = () => {
+    if (!flow) return;
+    btnPublish.click();
   };
 
   // Abas Editor / Execuções
@@ -1205,8 +1260,12 @@
       if (!flow.edges) flow.edges = [];
       applyStatus(flow.status || "draft");
       applyTags(flow.tags || []);
+      updatePublishBtn();
       AIS.flow = flow;
-      AIS.persist = persist;
+      AIS.persist = async () => {
+        await persist();
+        // Disparar auto-save visual sem loop
+      };
       flash("Pronto");
     } else {
       flowNameE.textContent = "Nenhum fluxo aberto";
@@ -1215,6 +1274,15 @@
     // Init node system
     if (typeof AISNodes !== "undefined" && AIS.flow) AISNodes.init();
     window.AIS.refreshEmpty();
+
+    // Observar mudanças no DOM do canvas para auto-save
+    const world = document.getElementById("world");
+    if (world && flow) {
+      const obs = new MutationObserver(() => {
+        window.dispatchEvent(new Event("ais:changed"));
+      });
+      obs.observe(world, { childList: true, subtree: true, attributes: true, characterData: true });
+    }
   })();
 })();
 </script>
