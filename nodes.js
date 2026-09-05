@@ -188,7 +188,6 @@ function renderNode(node){
              <div class="node-port port-out port-false" data-port="false" title="False"></div>`
            :'<div class="node-port port-out" data-port="out"></div>'}`;
   setupDrag(el,node); setupPortClicks(el,node);
-  // Abrir config: aceita tanto dblclick nativo quanto dois cliques rápidos
   const body=el.querySelector(".node-body");
   const openIt=e=>{ e.stopPropagation(); if(el.classList.contains("dragging"))return;
     selectNode(node.id); openConfig(node.id); };
@@ -202,6 +201,8 @@ function renderNode(node){
   });
   $world.appendChild(el);
 }
+// Alias para renderizar nó do snapshot (sem adicionar ao array)
+function addNodeDirect(node){ renderNode(node); }
 function getSubtitle(n){
   const c=n.config||{};
   switch(n.type){
@@ -494,9 +495,7 @@ function openExecPanel(){
 function closeExecPanel(){
   execPanelOpen=false;
   $execPanel.classList.remove("open");
-  document.getElementById("execDetailBanner").classList.remove("open");
-  document.getElementById("execDetailBanner").innerHTML="";
-  $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
+  restoreOriginalFlow();
 }
 
 let execListData=[];
@@ -560,10 +559,29 @@ function renderExecList(){
   }
 }
 
+let originalFlow = null; // guarda o fluxo real para restaurar
+
 async function showExecOnCanvas(execId){
   try{
     const r=await fetch(`/api/executions/${AIS.flow.id}/${execId}`,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
     const exec=await r.json();
+
+    // Se tem snapshot, renderizar os nós daquele momento
+    if(exec.snapshot && exec.snapshot.nodes){
+      // Salvar fluxo original na primeira vez
+      if(!originalFlow) originalFlow = { nodes:[...(AIS.flow.nodes||[])], edges:[...(AIS.flow.edges||[])] };
+      // Limpar canvas atual
+      $world.querySelectorAll(".ais-node").forEach(n=>n.remove());
+      document.getElementById("edges").innerHTML="";
+      // Renderizar nós do snapshot
+      AIS.flow.nodes = exec.snapshot.nodes;
+      AIS.flow.edges = exec.snapshot.edges || [];
+      for(const node of exec.snapshot.nodes){
+        if(typeof addNodeDirect === "function") addNodeDirect(node);
+      }
+      renderEdges();
+    }
+
     highlightExec(exec);
 
     const dt=new Date(exec.startedAt);
@@ -589,13 +607,27 @@ async function showExecOnCanvas(execId){
       <button class="exec-banner-close" id="execBannerClose" title="Fechar detalhes">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>`;
-    document.getElementById("execBannerClose").onclick=()=>{
-      banner.classList.remove("open");
-      banner.innerHTML="";
-      $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
-      document.getElementById("execListScroll").querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
-    };
+    document.getElementById("execBannerClose").onclick=()=>restoreOriginalFlow();
   }catch(e){console.error(e);}
+}
+
+function restoreOriginalFlow(){
+  document.getElementById("execDetailBanner").classList.remove("open");
+  document.getElementById("execDetailBanner").innerHTML="";
+  $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
+  document.getElementById("execListScroll").querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
+  // Restaurar fluxo original
+  if(originalFlow){
+    $world.querySelectorAll(".ais-node").forEach(n=>n.remove());
+    document.getElementById("edges").innerHTML="";
+    AIS.flow.nodes = originalFlow.nodes;
+    AIS.flow.edges = originalFlow.edges;
+    for(const node of originalFlow.nodes){
+      if(typeof addNodeDirect === "function") addNodeDirect(node);
+    }
+    renderEdges();
+    originalFlow = null;
+  }
 }
 
 async function runFlow(){
