@@ -489,96 +489,148 @@ function copyUrl(){const u=document.getElementById("cfgUrl");if(!u)return;
 function openExecPanel(){
   closeConfig(); execPanelOpen=true;
   $execPanel.classList.add("open"); $cfgScrim.classList.add("open"); $cfgScrim.onclick=closeExecPanel;
-  loadExecutions();
+  showExecList();
 }
 function closeExecPanel(){execPanelOpen=false;$execPanel.classList.remove("open");$cfgScrim.classList.remove("open");
   $world.querySelectorAll(".ais-node").forEach(n=>{n.classList.remove("exec-success","exec-error");});
 }
-async function loadExecutions(){
+
+let execListData=[];
+let selectedExecId=null;
+
+async function showExecList(){
   if(!AIS.flow)return;
-  let h=`<div class="cfg-head"><div class="cfg-head-icon" style="background:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
-    <span class="cfg-name" style="pointer-events:none">Execuções</span>
-    <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-    <div class="cfg-scroll"><div class="cfg-sec">
-    <button class="btn primary" style="width:100%;justify-content:center;margin-bottom:16px" id="execRunBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora</button>`;
+  selectedExecId=null;
+  let listHtml=``;
   if(AISStore.isServer()){
     try{const r=await fetch("/api/executions/"+AIS.flow.id,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
-      const list=await r.json();
-      if(list.length){
-        h+=`<div class="cfg-sec-label">Histórico</div>`;
-        for(const ex of list){
-          const t=new Date(ex.startedAt).toLocaleTimeString("pt-BR");
-          const dur=ex.finishedAt?(ex.finishedAt-ex.startedAt)+"ms":"...";
-          const cls=ex.status==="success"?"exec-ok":"exec-err";
-          h+=`<div class="exec-item ${cls}" data-id="${ex.id}">
-            <div class="exec-dot"></div>
-            <div class="exec-info"><div>${t}</div><div class="exec-sub">${ex.stepCount} nós · ${dur}</div></div>
-            <div class="exec-status">${ex.status==="success"?"Sucesso":"Erro"}</div></div>`;
-        }
-      }else h+='<p class="cfg-hint">Nenhuma execução ainda.</p>';
-    }catch{h+='<p class="cfg-hint">Conecte-se ao servidor para ver execuções.</p>';}
-  }else h+='<p class="cfg-hint">Execuções ficam salvas no servidor (Termux). No modo local, você pode executar mas o histórico não persiste.</p>';
-  h+="</div></div>";
+      execListData=await r.json();
+    }catch{execListData=[];}
+  }else{execListData=[];}
+
+  // Build panel HTML: header + toolbar + list
+  let h=`<div class="exec-header">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    <span class="exec-header-title">Execuções</span>
+    <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="exec-toolbar">
+    <button class="btn primary" id="execRunBtn" style="flex:1;justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora</button>
+  </div>`;
+
+  if(!execListData.length){
+    h+=`<div class="exec-list-empty">
+      ${AISStore.isServer()?"Nenhuma execução ainda. Clique em Executar.":"Execuções ficam no servidor (Termux)."}
+    </div>`;
+  }else{
+    h+=`<div class="exec-list-scroll" id="execListScroll">`;
+    for(const ex of execListData){
+      const dt=new Date(ex.startedAt);
+      const dateStr=dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}).replace(".","");
+      const timeStr=dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+      const dur=ex.finishedAt?(ex.finishedAt-ex.startedAt)+"ms":"...";
+      const ok=ex.status==="success";
+      const cls=ok?"exec-ok":"exec-err";
+      h+=`<div class="exec-item ${cls}" data-id="${ex.id}">
+        <div class="exec-dot"></div>
+        <div class="exec-info">
+          <div class="exec-date">${dateStr}, ${timeStr}</div>
+          <div class="exec-sub">${ok?"Sucesso":"Erro"} em ${dur} · ${ex.stepCount||0} nós</div>
+        </div>
+        <div class="exec-status-badge">${ok?"Sucesso":"Erro"}</div>
+      </div>`;
+    }
+    h+=`</div>`;
+  }
+
   $execPanel.innerHTML=h;
   document.getElementById("execClose").onclick=closeExecPanel;
   document.getElementById("execRunBtn").onclick=runFlow;
-  $execPanel.querySelectorAll(".exec-item").forEach(el=>el.onclick=()=>showExecDetail(el.dataset.id));
+  $execPanel.querySelectorAll(".exec-item").forEach(el=>el.onclick=()=>{
+    $execPanel.querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
+    el.classList.add("active");
+    showExecDetail(el.dataset.id);
+  });
 }
+
 async function runFlow(){
   const btn=document.getElementById("execRunBtn"); btn.disabled=true; btn.textContent="Executando...";
   try{
     if(AISStore.isServer()){
       const r=await fetch("/api/execute/"+AIS.flow.id,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true})});
       const exec=await r.json();
-      highlightExec(exec); loadExecutions();
+      highlightExec(exec);
+      showExecList();
     }else{
-      // Modo local: sem execução real
       alert("Execução requer o servidor (Termux). No modo estático os fluxos são apenas visuais.");
     }
   }catch(e){alert("Erro: "+e.message);}
-  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora';
+  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora';
 }
+
 async function showExecDetail(execId){
   try{
     const r=await fetch(`/api/executions/${AIS.flow.id}/${execId}`,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
-    const exec=await r.json(); highlightExec(exec);
+    const exec=await r.json();
+    highlightExec(exec);
+    selectedExecId=execId;
+
+    const dt=new Date(exec.startedAt);
+    const dateStr=dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric"}).replace(".","");
+    const timeStr=dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
     const total=exec.finishedAt?(exec.finishedAt-exec.startedAt):0;
-    const when=new Date(exec.startedAt).toLocaleString("pt-BR");
+    const ok=exec.status==="success";
     const errStep=(exec.steps||[]).find(s=>s.status==="error");
-    let h=`<div class="cfg-head">
-      <button class="cfg-close" id="execBack" style="width:32px" title="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
-      <span class="cfg-name" style="pointer-events:none">Execução</span>
-      <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-      <div class="cfg-scroll">
-      <div class="cfg-sec">
-        <div class="exec-summary ${exec.status==="success"?"exec-ok":"exec-err"}">
-          <div class="exec-summary-status">${exec.status==="success"?"✓ Sucesso":"✗ Erro"}</div>
-          <div class="exec-summary-meta">${when} · ${total}ms · ${(exec.steps||[]).length} nós</div>
-          ${errStep?`<div class="exec-summary-err"><b>Erro em:</b> ${esc(errStep.nodeName)}<br><span>${esc(errStep.error||"—")}</span></div>`:""}
-        </div>
+
+    // Build detail view
+    let h=`<div class="exec-header">
+      <button class="cfg-close" id="execBack" style="width:28px" title="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <span class="exec-header-title">Detalhes da execução</span>
+      <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="exec-detail-banner">
+      <div class="exec-detail-status ${ok?"ok":"err"}">${ok?"✓ Concluído com sucesso":"✗ Erro na execução"}</div>
+      <div class="exec-detail-meta">
+        <span>${dateStr}, ${timeStr}</span><span class="sep"></span>
+        <span>${total}ms</span><span class="sep"></span>
+        <span>${(exec.steps||[]).length} nós</span>
       </div>
-      <div class="cfg-sec"><div class="cfg-sec-label">Passos executados</div>`;
+      <div class="exec-detail-id">ID: ${esc(exec.id)}</div>
+    </div>`;
+
+    if(errStep){
+      h+=`<div class="exec-detail-err-box" style="margin-top:8px">
+        <b>Erro em: ${esc(errStep.nodeName)}</b>
+        <span>${esc(errStep.error||"Erro desconhecido")}</span>
+      </div>`;
+    }
+
+    h+=`<div class="exec-steps-scroll">
+      <div class="exec-steps-label">Passos executados (${(exec.steps||[]).length})</div>`;
+
     for(const s of (exec.steps||[])){
-      const ok=s.status==="success";
+      const sok=s.status==="success";
       const dur=s.finishedAt?(s.finishedAt-s.startedAt)+"ms":"...";
-      h+=`<div class="exec-detail-step ${ok?"exec-ok":"exec-err"}">
+      h+=`<div class="exec-detail-step ${sok?"":"exec-err"}">
         <div class="exec-detail-head">
-          <div class="exec-dot"></div>
+          <div class="exec-dot" style="width:7px;height:7px;border-radius:50%;background:${sok?"#3ecf8e":"#ff5a6a"}"></div>
           <span class="exec-detail-name">${esc(s.nodeName)}</span>
           <span class="exec-detail-type">${s.nodeType}</span>
           <span class="exec-detail-dur">${dur}</span>
         </div>
-        ${s.error?`<div class="exec-detail-error"><b>Erro:</b> ${esc(s.error)}</div>`:""}
+        ${s.error?`<div class="exec-detail-error">${esc(s.error)}</div>`:""}
         ${s.input?`<details class="exec-detail-data"><summary>Entrada</summary><pre>${esc(JSON.stringify(s.input,null,2).slice(0,2000))}</pre></details>`:""}
-        ${s.output?`<details class="exec-detail-data" ${ok?"":"open"}><summary>Saída</summary><pre>${esc(JSON.stringify(s.output,null,2).slice(0,2000))}</pre></details>`:""}
+        ${s.output?`<details class="exec-detail-data" ${sok?"":"open"}><summary>Saída</summary><pre>${esc(JSON.stringify(s.output,null,2).slice(0,2000))}</pre></details>`:""}
       </div>`;
     }
-    h+=`</div></div>`;
+    h+=`</div>`;
+
     $execPanel.innerHTML=h;
     document.getElementById("execClose").onclick=closeExecPanel;
-    document.getElementById("execBack").onclick=loadExecutions;
-  }catch(e){}
+    document.getElementById("execBack").onclick=showExecList;
+  }catch(e){console.error(e);}
 }
+
 function highlightExec(exec){
   $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
   for(const s of(exec.steps||[])){
@@ -601,6 +653,6 @@ function setupKeys(){
 /* ===== Export ===== */
 // Mantém register já exposto e adiciona os métodos internos.
 Object.assign(window.AISNodes, {init,TYPES,addNode:addNodeToCenter,removeNode,openConfig,closeConfig,
-  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,
+  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,showExecList,
   undo,redo,autoLayout});
 })();
