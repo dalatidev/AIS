@@ -280,12 +280,20 @@ async function handleApi(req, res, url) {
     return json(res, 200, { ok: true });
   }
 
-  // POST /api/execute/:id  -> executa o fluxo manualmente
+  // POST /api/execute/:id  -> executa o fluxo
+  // Body: { force: true } = execução de teste (ignora status)
+  // Sem force = respeita status (só executa se publicado)
   if (req.method === "POST" && parts[1] === "execute" && parts.length === 3) {
     const id = parts[2];
     if (!flows[id]) return json(res, 404, { error: "Fluxo não encontrado." });
     const body = JSON.parse((await readBody(req)) || "{}");
     const flow = flows[id];
+
+    // Se não for execução forçada (teste), exigir status active
+    if (!body.force && flow.status !== "active") {
+      return json(res, 403, { error: "Fluxo não está publicado. Publique o fluxo para executá-lo.", status: flow.status || "draft" });
+    }
+
     // Encontra o nó gatilho (manualTrigger ou webhook, ou primeiro sem entrada)
     const triggerNode = (flow.nodes||[]).find(n =>
       n.type === "manualTrigger" || n.type === "webhook" || n.type === "scheduleTrigger"
