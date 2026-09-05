@@ -528,7 +528,7 @@ async function runFlow(){
   const btn=document.getElementById("execRunBtn"); btn.disabled=true; btn.textContent="Executando...";
   try{
     if(AISStore.isServer()){
-      const r=await fetch("/api/execute/"+AIS.flow.id,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:"{}"});
+      const r=await fetch("/api/execute/"+AIS.flow.id,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true})});
       const exec=await r.json();
       highlightExec(exec); loadExecutions();
     }else{
