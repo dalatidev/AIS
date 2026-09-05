@@ -301,6 +301,8 @@ async function handleApi(req, res, url) {
     if (!triggerNode) return json(res, 400, { error: "Nenhum nó gatilho encontrado." });
     const engine = new Engine(flow);
     const exec = await engine.run(triggerNode.id, body.triggerData || {});
+    // Gravar snapshot do fluxo no momento da execução
+    exec.snapshot = { nodes: flow.nodes || [], edges: flow.edges || [] };
     storeExec(id, exec);
     return json(res, 200, exec);
   }
@@ -411,6 +413,8 @@ async function handleHook(req, res, url) {
   try {
     const engine = new Engine(targetFlow);
     const exec = await engine.run(targetNode.id, hit);
+    // Gravar snapshot do fluxo no momento da execução
+    exec.snapshot = { nodes: targetFlow.nodes || [], edges: targetFlow.edges || [] };
     storeExec(targetFlow.id, exec);
 
     // Se há um nó "Respond to Webhook", usa a resposta dele
