@@ -177,11 +177,22 @@
   #canvas {
     position:absolute; inset:0;
     background-color:var(--bg);
-    cursor:grab;
+    cursor:default;
     touch-action:none;
     overflow:hidden;
   }
+  #canvas.pannable { cursor:grab; }
   #canvas.panning { cursor:grabbing; }
+  #canvas.box-selecting { cursor:crosshair; }
+
+  #selectBox {
+    position:absolute; z-index:3;
+    border:1.5px solid var(--blue);
+    background:rgba(47,123,255,.08);
+    border-radius:3px;
+    pointer-events:none;
+    display:none;
+  }
   /* Dotted grid drawn via layered radial gradient; offset via CSS vars */
   #grid {
     position:absolute; inset:-2000px;
@@ -718,6 +729,12 @@
     box-shadow:0 4px 16px rgba(0,0,0,.45);
     white-space:nowrap;
   }
+  /* Ponte invisível que conecta toolbar ao nó (impede perder hover) */
+  .node-toolbar::after {
+    content:""; position:absolute;
+    left:-6px; right:-6px; top:-6px; bottom:-12px;
+    z-index:-1;
+  }
   .ais-node:hover > .node-toolbar,
   .node-toolbar.pinned { opacity:1; pointer-events:auto; }
   .ais-node.dragging > .node-toolbar,
@@ -852,6 +869,7 @@
   <div class="workspace">
     <div id="canvas">
       <div id="grid"></div>
+      <div id="selectBox"></div>
       <div id="world">
         <svg id="edges"></svg>
         <!-- nodes injected here later -->
@@ -1014,26 +1032,91 @@
     applyView();
   }
 
-  /* ---------- Mouse / trackpad pan + wheel zoom ---------- */
+  /* ---------- Mouse / trackpad: Ctrl+drag = pan, drag = box select, wheel = zoom ---------- */
   let panning = false, startX = 0, startY = 0, ox = 0, oy = 0;
+  let boxSelecting = false, boxStartX = 0, boxStartY = 0;
+  const selectBox = document.getElementById("selectBox");
 
   canvas.addEventListener("mousedown", (e) => {
     if (e.button !== 0 && e.button !== 1) return;
-    // Only pan when the empty canvas/grid is grabbed (nodes handle themselves later)
-    if (e.target !== canvas && e.target !== grid && e.target !== world) return;
-    panning = true;
-    canvas.classList.add("panning");
-    startX = e.clientX; startY = e.clientY; ox = view.x; oy = view.y;
+    if (e.target !== canvas && e.target !== grid && e.target !== world && e.target !== selectBox) return;
+
+    if (e.ctrlKey || e.metaKey || e.button === 1) {
+      // Pan mode (Ctrl+drag ou botão do meio)
+      panning = true;
+      canvas.classList.add("panning");
+      startX = e.clientX; startY = e.clientY; ox = view.x; oy = view.y;
+    } else {
+      // Box selection mode
+      boxSelecting = true;
+      canvas.classList.add("box-selecting");
+      const rect = canvas.getBoundingClientRect();
+      boxStartX = e.clientX - rect.left;
+      boxStartY = e.clientY - rect.top;
+      selectBox.style.left = boxStartX + "px";
+      selectBox.style.top = boxStartY + "px";
+      selectBox.style.width = "0";
+      selectBox.style.height = "0";
+      selectBox.style.display = "block";
+    }
   });
   window.addEventListener("mousemove", (e) => {
-    if (!panning) return;
-    view.x = ox + (e.clientX - startX);
-    view.y = oy + (e.clientY - startY);
-    applyView();
+    if (panning) {
+      view.x = ox + (e.clientX - startX);
+      view.y = oy + (e.clientY - startY);
+      applyView();
+    }
+    if (boxSelecting) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      selectBox.style.left = Math.min(boxStartX, cx) + "px";
+      selectBox.style.top = Math.min(boxStartY, cy) + "px";
+      selectBox.style.width = Math.abs(cx - boxStartX) + "px";
+      selectBox.style.height = Math.abs(cy - boxStartY) + "px";
+    }
   });
   window.addEventListener("mouseup", () => {
-    panning = false; canvas.classList.remove("panning");
+    if (panning) {
+      panning = false; canvas.classList.remove("panning");
+    }
+    if (boxSelecting) {
+      boxSelecting = false;
+      canvas.classList.remove("box-selecting");
+      const bw = parseFloat(selectBox.style.width) || 0;
+      const bh = parseFloat(selectBox.style.height) || 0;
+      const bx = parseFloat(selectBox.style.left) || 0;
+      const by = parseFloat(selectBox.style.top) || 0;
+      selectBox.style.display = "none";
+
+      if (bw > 5 || bh > 5) {
+        // Converter coordenadas de tela para world
+        const wx1 = (bx - view.x) / view.k;
+        const wy1 = (by - view.y) / view.k;
+        const wx2 = (bx + bw - view.x) / view.k;
+        const wy2 = (by + bh - view.y) / view.k;
+        if (typeof AISNodes !== "undefined" && AIS.flow && AIS.flow.nodes) {
+          const ids = [];
+          for (const n of AIS.flow.nodes) {
+            const el = world.querySelector(`.ais-node[data-id="${n.id}"]`);
+            const body = el?.querySelector(".node-body");
+            const nw = body?.offsetWidth || 220, nh = body?.offsetHeight || 66;
+            if (n.x + nw >= wx1 && n.x <= wx2 && n.y + nh >= wy1 && n.y <= wy2) ids.push(n.id);
+          }
+          if (ids.length) AISNodes.selectMultiple(ids);
+        }
+        window._aisBoxDone = true;
+        requestAnimationFrame(() => window._aisBoxDone = false);
+      } else {
+        // Click simples no canvas vazio — desselecionar
+        if (typeof AISNodes !== "undefined") { AISNodes.deselectAll(); AISNodes.closeConfig(); }
+      }
+    }
   });
+
+  /* Ctrl key: mostrar cursor grab */
+  window.addEventListener("keydown", (e) => { if (e.ctrlKey || e.metaKey) canvas.classList.add("pannable"); });
+  window.addEventListener("keyup", (e) => { if (!e.ctrlKey && !e.metaKey) canvas.classList.remove("pannable"); });
+  window.addEventListener("blur", () => canvas.classList.remove("pannable"));
 
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
