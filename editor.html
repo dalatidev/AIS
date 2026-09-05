@@ -906,10 +906,18 @@
   const params  = new URLSearchParams(location.search);
   const flowId  = params.get("id");
   let flow      = null;
+  let execViewMode = false; // true quando visualizando execução (read-only)
 
   async function persist() {
     if (!flow) return;
-    await AISStore.update(flow.id, { name: flow.name, nodes: flow.nodes, edges: flow.edges });
+    await AISStore.update(flow.id, {
+      name: flow.name,
+      nodes: flow.nodes,
+      edges: flow.edges,
+      tags: flow.tags || [],
+      status: flow.status || "draft",
+      folderId: flow.folderId || null,
+    });
   }
 
   const canvas   = document.getElementById("canvas");
@@ -1053,6 +1061,7 @@
   const searchInput = document.getElementById("paletteSearch");
 
   function openPalette() {
+    if(execViewMode) return; // Não abrir paleta no modo execução
     scrim.classList.add("open");
     palette.classList.add("open");
     setTimeout(() => searchInput.focus(), 260);
@@ -1061,6 +1070,7 @@
     scrim.classList.remove("open");
     palette.classList.remove("open");
     searchInput.value = "";
+    searchInput.dispatchEvent(new Event("input")); // Resetar filtro
   }
   document.getElementById("fabAdd").onclick     = openPalette;
   document.getElementById("btnEmptyAdd").onclick = openPalette;
@@ -1210,6 +1220,8 @@
     canvas,
     flow: null,
     persist: null,
+    get execViewMode() { return execViewMode; },
+    set execViewMode(v) { execViewMode = v; },
     get nodeCount() { return world.querySelectorAll(".ais-node").length; },
     refreshEmpty() {
       emptyEl.style.display = this.nodeCount ? "none" : "flex";
