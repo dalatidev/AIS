@@ -488,92 +488,83 @@ function copyUrl(){const u=document.getElementById("cfgUrl");if(!u)return;
 /* ===== Execution Panel ===== */
 function openExecPanel(){
   closeConfig(); execPanelOpen=true;
-  $execPanel.classList.add("open"); $cfgScrim.classList.add("open"); $cfgScrim.onclick=closeExecPanel;
-  showExecList();
+  $execPanel.classList.add("open");
+  loadExecList();
 }
-function closeExecPanel(){execPanelOpen=false;$execPanel.classList.remove("open");$cfgScrim.classList.remove("open");
-  $world.querySelectorAll(".ais-node").forEach(n=>{n.classList.remove("exec-success","exec-error");});
+function closeExecPanel(){
+  execPanelOpen=false;
+  $execPanel.classList.remove("open");
+  document.getElementById("execDetailBanner").classList.remove("open");
+  document.getElementById("execDetailBanner").innerHTML="";
+  $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
 }
 
 let execListData=[];
-let selectedExecId=null;
+let execFilter="all";
 
-async function showExecList(){
+// Filter buttons
+document.querySelectorAll(".exec-filter").forEach(btn=>{
+  btn.onclick=()=>{
+    document.querySelectorAll(".exec-filter").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    execFilter=btn.dataset.filter;
+    renderExecList();
+  };
+});
+
+async function loadExecList(){
   if(!AIS.flow)return;
-  selectedExecId=null;
-  let listHtml=``;
   if(AISStore.isServer()){
-    try{const r=await fetch("/api/executions/"+AIS.flow.id,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
+    try{
+      const r=await fetch("/api/executions/"+AIS.flow.id,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
       execListData=await r.json();
     }catch{execListData=[];}
   }else{execListData=[];}
+  renderExecList();
+}
 
-  // Build panel HTML: header + toolbar + list
-  let h=`<div class="exec-header">
-    <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-    <span class="exec-header-title">Execuções</span>
-    <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-  </div>
-  <div class="exec-toolbar">
-    <button class="btn primary" id="execRunBtn" style="flex:1;justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora</button>
-  </div>`;
+function renderExecList(){
+  const el=document.getElementById("execListScroll");
+  let list=execListData;
+  if(execFilter!=="all") list=list.filter(e=>e.status===execFilter);
 
-  if(!execListData.length){
-    h+=`<div class="exec-list-empty">
-      ${AISStore.isServer()?"Nenhuma execução ainda. Clique em Executar.":"Execuções ficam no servidor (Termux)."}
-    </div>`;
-  }else{
-    h+=`<div class="exec-list-scroll" id="execListScroll">`;
-    for(const ex of execListData){
-      const dt=new Date(ex.startedAt);
-      const dateStr=dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}).replace(".","");
-      const timeStr=dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-      const dur=ex.finishedAt?(ex.finishedAt-ex.startedAt)+"ms":"...";
-      const ok=ex.status==="success";
-      const cls=ok?"exec-ok":"exec-err";
-      h+=`<div class="exec-item ${cls}" data-id="${ex.id}">
-        <div class="exec-dot"></div>
-        <div class="exec-info">
-          <div class="exec-date">${dateStr}, ${timeStr}</div>
-          <div class="exec-sub">${ok?"Sucesso":"Erro"} em ${dur} · ${ex.stepCount||0} nós</div>
-        </div>
-        <div class="exec-status-badge">${ok?"Sucesso":"Erro"}</div>
-      </div>`;
-    }
-    h+=`</div>`;
+  if(!list.length){
+    el.innerHTML=`<div class="exec-list-empty">${
+      execListData.length===0
+        ?(AISStore.isServer()?"Nenhuma execução ainda.":"Execuções requerem o servidor (Termux).")
+        :"Nenhuma execução com esse filtro."
+    }</div>`;
+    return;
   }
-
-  $execPanel.innerHTML=h;
-  document.getElementById("execClose").onclick=closeExecPanel;
-  document.getElementById("execRunBtn").onclick=runFlow;
-  $execPanel.querySelectorAll(".exec-item").forEach(el=>el.onclick=()=>{
-    $execPanel.querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
-    el.classList.add("active");
-    showExecDetail(el.dataset.id);
-  });
+  el.innerHTML="";
+  for(const ex of list){
+    const dt=new Date(ex.startedAt);
+    const dateStr=dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}).replace(".","");
+    const timeStr=dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    const dur=ex.finishedAt?(ex.finishedAt-ex.startedAt)+"ms":"...";
+    const ok=ex.status==="success";
+    const item=document.createElement("div");
+    item.className=`exec-item ${ok?"exec-ok":"exec-err"}`;
+    item.dataset.id=ex.id;
+    item.innerHTML=`<div class="exec-dot"></div>
+      <div class="exec-info">
+        <div class="exec-date">${dateStr}, ${timeStr}</div>
+        <div class="exec-sub">${ok?"Sucesso":"Erro"} em ${dur}</div>
+      </div>`;
+    item.onclick=()=>{
+      el.querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
+      item.classList.add("active");
+      showExecOnCanvas(ex.id);
+    };
+    el.appendChild(item);
+  }
 }
 
-async function runFlow(){
-  const btn=document.getElementById("execRunBtn"); btn.disabled=true; btn.textContent="Executando...";
-  try{
-    if(AISStore.isServer()){
-      const r=await fetch("/api/execute/"+AIS.flow.id,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true})});
-      const exec=await r.json();
-      highlightExec(exec);
-      showExecList();
-    }else{
-      alert("Execução requer o servidor (Termux). No modo estático os fluxos são apenas visuais.");
-    }
-  }catch(e){alert("Erro: "+e.message);}
-  btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="m6 3 14 9-14 9V3z"/></svg>Executar agora';
-}
-
-async function showExecDetail(execId){
+async function showExecOnCanvas(execId){
   try{
     const r=await fetch(`/api/executions/${AIS.flow.id}/${execId}`,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
     const exec=await r.json();
     highlightExec(exec);
-    selectedExecId=execId;
 
     const dt=new Date(exec.startedAt);
     const dateStr=dt.toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric"}).replace(".","");
@@ -582,53 +573,42 @@ async function showExecDetail(execId){
     const ok=exec.status==="success";
     const errStep=(exec.steps||[]).find(s=>s.status==="error");
 
-    // Build detail view
-    let h=`<div class="exec-header">
-      <button class="cfg-close" id="execBack" style="width:28px" title="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
-      <span class="exec-header-title">Detalhes da execução</span>
-      <button class="cfg-close" id="execClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-    </div>
-    <div class="exec-detail-banner">
-      <div class="exec-detail-status ${ok?"ok":"err"}">${ok?"✓ Concluído com sucesso":"✗ Erro na execução"}</div>
-      <div class="exec-detail-meta">
-        <span>${dateStr}, ${timeStr}</span><span class="sep"></span>
-        <span>${total}ms</span><span class="sep"></span>
-        <span>${(exec.steps||[]).length} nós</span>
-      </div>
-      <div class="exec-detail-id">ID: ${esc(exec.id)}</div>
-    </div>`;
-
-    if(errStep){
-      h+=`<div class="exec-detail-err-box" style="margin-top:8px">
-        <b>Erro em: ${esc(errStep.nodeName)}</b>
-        <span>${esc(errStep.error||"Erro desconhecido")}</span>
-      </div>`;
-    }
-
-    h+=`<div class="exec-steps-scroll">
-      <div class="exec-steps-label">Passos executados (${(exec.steps||[]).length})</div>`;
-
-    for(const s of (exec.steps||[])){
-      const sok=s.status==="success";
-      const dur=s.finishedAt?(s.finishedAt-s.startedAt)+"ms":"...";
-      h+=`<div class="exec-detail-step ${sok?"":"exec-err"}">
-        <div class="exec-detail-head">
-          <div class="exec-dot" style="width:7px;height:7px;border-radius:50%;background:${sok?"#3ecf8e":"#ff5a6a"}"></div>
-          <span class="exec-detail-name">${esc(s.nodeName)}</span>
-          <span class="exec-detail-type">${s.nodeType}</span>
-          <span class="exec-detail-dur">${dur}</span>
+    const banner=document.getElementById("execDetailBanner");
+    banner.classList.add("open");
+    banner.innerHTML=`
+      <div class="exec-banner-info">
+        <div class="exec-banner-status ${ok?"ok":"err"}">${ok?"✓ Concluído com sucesso":"✗ Erro na execução"}</div>
+        <div class="exec-banner-meta">
+          <span>${dateStr}, ${timeStr}</span><span class="sep"></span>
+          <span>${total}ms</span><span class="sep"></span>
+          <span>${(exec.steps||[]).length} nós</span>
         </div>
-        ${s.error?`<div class="exec-detail-error">${esc(s.error)}</div>`:""}
-        ${s.input?`<details class="exec-detail-data"><summary>Entrada</summary><pre>${esc(JSON.stringify(s.input,null,2).slice(0,2000))}</pre></details>`:""}
-        ${s.output?`<details class="exec-detail-data" ${sok?"":"open"}><summary>Saída</summary><pre>${esc(JSON.stringify(s.output,null,2).slice(0,2000))}</pre></details>`:""}
-      </div>`;
-    }
-    h+=`</div>`;
-
-    $execPanel.innerHTML=h;
-    document.getElementById("execClose").onclick=closeExecPanel;
-    document.getElementById("execBack").onclick=showExecList;
+        <div class="exec-banner-id">ID: ${esc(exec.id)}</div>
+        ${errStep?`<div class="exec-banner-err"><b>Erro em: ${esc(errStep.nodeName)}</b> <span>${esc(errStep.error||"")}</span></div>`:""}
+      </div>
+      <button class="exec-banner-close" id="execBannerClose" title="Fechar detalhes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>`;
+    document.getElementById("execBannerClose").onclick=()=>{
+      banner.classList.remove("open");
+      banner.innerHTML="";
+      $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
+      document.getElementById("execListScroll").querySelectorAll(".exec-item").forEach(e=>e.classList.remove("active"));
+    };
   }catch(e){console.error(e);}
+}
+
+async function runFlow(){
+  try{
+    if(AISStore.isServer()){
+      const r=await fetch("/api/execute/"+AIS.flow.id,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true})});
+      const exec=await r.json();
+      highlightExec(exec);
+      if(execPanelOpen) loadExecList();
+    }else{
+      alert("Execução requer o servidor (Termux).");
+    }
+  }catch(e){alert("Erro: "+e.message);}
 }
 
 function highlightExec(exec){
@@ -653,6 +633,6 @@ function setupKeys(){
 /* ===== Export ===== */
 // Mantém register já exposto e adiciona os métodos internos.
 Object.assign(window.AISNodes, {init,TYPES,addNode:addNodeToCenter,removeNode,openConfig,closeConfig,
-  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,showExecList,
+  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,loadExecList,runFlow,
   undo,redo,autoLayout});
 })();
