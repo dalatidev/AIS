@@ -348,12 +348,28 @@ $("filterStatus").onchange  = e => { state.statusFilter = e.target.value; state.
 $("filterFolder").onchange  = e => { state.folderFilter = e.target.value; state.page = 1; renderFlows(); };
 
 /* ===== CREDS ===== */
-const CRED_TYPES = [
-  { value: "apiKey", label: "API Key",       icon: "🔑" },
-  { value: "basic",  label: "Basic Auth",    icon: "👤" },
-  { value: "bearer", label: "Bearer Token",  icon: "🎫" },
-  { value: "custom", label: "Custom Headers", icon: "📝" }
-];
+const CRED_TYPE_ICONS = {
+  apiKey: "🔑",
+  basicAuth: "👤",
+  bearerToken: "🎫",
+  oauth2: "🔐",
+  basic: "👤",       // legado
+  bearer: "🎫",      // legado
+  custom: "📝",      // legado
+};
+let CRED_PRESETS = null;
+
+async function loadCredPresets() {
+  if (CRED_PRESETS) return CRED_PRESETS;
+  try {
+    const r = await fetch("/api/credentials/presets", { headers: { "X-AIS-Token": localStorage.getItem("ais.token") || "" } });
+    CRED_PRESETS = await r.json();
+  } catch {
+    CRED_PRESETS = [];
+  }
+  return CRED_PRESETS;
+}
+
 async function renderCreds() {
   allCreds = await AISStore.listCredentials();
   let list = allCreds.slice();
@@ -366,10 +382,11 @@ async function renderCreds() {
   }
   g.innerHTML = "";
   for (const c of list) {
-    const ct = CRED_TYPES.find(t => t.value === c.type) || CRED_TYPES[0];
+    const icon = CRED_TYPE_ICONS[c.type] || "🔑";
+    const status = c.connected ? '<span class="cred-badge ok">✓ Conectada</span>' : '<span class="cred-badge warn">⚠ Não conectada</span>';
     const card = document.createElement("div");
     card.className = "cred-card";
-    card.innerHTML = `<div class="cred-icon">${ct.icon}</div><div class="cred-info"><b></b><span>${ct.label} · ${timeAgo(c.updatedAt||c.createdAt)}</span></div><button class="btn sm ce">Editar</button><button class="btn sm danger cd">×</button>`;
+    card.innerHTML = `<div class="cred-icon">${icon}</div><div class="cred-info"><b></b><span>${esc(c.type)} · ${timeAgo(c.updatedAt||c.createdAt)}</span>${status}</div><button class="btn sm ce">Editar</button><button class="btn sm danger cd">×</button>`;
     card.querySelector("b").textContent = c.name;
     card.querySelector(".ce").onclick = () => editCred(c.id);
     card.querySelector(".cd").onclick = async () => { if (confirm(`Excluir "${c.name}"?`)) { await AISStore.removeCredential(c.id); renderCreds(); } };
@@ -378,33 +395,136 @@ async function renderCreds() {
 }
 $("searchCreds").oninput = e => { state.credQ = e.target.value.trim(); renderCreds(); };
 $("btnNewCred").onclick = () => editCred(null);
+
 async function editCred(id) {
+  const presets = await loadCredPresets();
   const c = id ? await AISStore.getCredential(id) : null;
-  const tp = c?.type || "apiKey";
-  openModal(`<h3>${c?"Editar":"Nova"} credencial</h3>
-    <label><span>Nome</span><input id="cName" value="${esc(c?.name||"")}" placeholder="Ex.: Google API"/></label>
-    <label><span>Tipo</span><select id="cType">${CRED_TYPES.map(t=>`<option value="${t.value}"${t.value===tp?" selected":""}>${t.icon} ${t.label}</option>`).join("")}</select></label>
+  const currentPresetId = c?.preset || "";
+  let credData = c ? { ...c.data } : {};
+
+  openModal(`<h3>${c ? "Editar" : "Nova"} credencial</h3>
+    <label><span>Tipo</span>
+      <select id="cPreset">
+        ${!c ? '<option value="">Selecione…</option>' : ''}
+        ${presets.map(p => `<option value="${esc(p.id)}"${p.id===currentPresetId?" selected":""}>${esc(p.name)}</option>`).join("")}
+      </select>
+    </label>
+    <label><span>Nome</span><input id="cName" value="${esc(c?.name||"")}" placeholder="Ex.: Minha conta Spotify"/></label>
     <div id="cFields"></div>
-    <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="cSave">Salvar</button></div>`);
-  const rf = () => {
-    const t = $("cType").value; const d = c?.data || {}; let h = "";
-    if (t === "apiKey") h = `<label><span>Nome do header</span><input id="cf_key" value="${esc(d.key||"X-Api-Key")}"/></label><label><span>Valor</span><input id="cf_val" type="password" value="${esc(d.value||"")}"/></label>`;
-    else if (t === "basic") h = `<label><span>Usuário</span><input id="cf_user" value="${esc(d.username||"")}"/></label><label><span>Senha</span><input id="cf_pass" type="password" value="${esc(d.password||"")}"/></label>`;
-    else if (t === "bearer") h = `<label><span>Token</span><input id="cf_token" type="password" value="${esc(d.token||"")}"/></label>`;
-    else h = `<label><span>Headers (JSON)</span><textarea id="cf_hdrs" rows="4">${esc(d.headers||"{}")}</textarea></label>`;
-    $("cFields").innerHTML = h;
+    <div id="cMsg" class="cred-msg"></div>
+    <div class="actions">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary" id="cSave">Salvar</button>
+      <button class="btn primary" id="cConnect" style="display:none">Conectar</button>
+      <button class="btn" id="cTest" style="display:none">Testar</button>
+    </div>`);
+
+  const presetSel = $("cPreset");
+  const fieldsEl = $("cFields");
+  const msgEl = $("cMsg");
+  const connectBtn = $("cConnect");
+  const testBtn = $("cTest");
+  let currentPreset = presets.find(p => p.id === currentPresetId) || null;
+  let existing = c;
+
+  function renderFields() {
+    if (!currentPreset) { fieldsEl.innerHTML = ""; connectBtn.style.display = "none"; testBtn.style.display = "none"; return; }
+    const t = currentPreset.type;
+    let h = "";
+    if (t === "oauth2") {
+      h = `
+        <label><span>Auth URL</span><input data-k="authUrl" value="${esc(credData.authUrl||currentPreset.authUrl||"")}"/></label>
+        <label><span>Token URL</span><input data-k="tokenUrl" value="${esc(credData.tokenUrl||currentPreset.tokenUrl||"")}"/></label>
+        <label><span>Client ID</span><input data-k="clientId" value="${esc(credData.clientId||"")}"/></label>
+        <label><span>Client Secret</span><input type="password" data-k="clientSecret" value="${esc(credData.clientSecret==='__set__'?'':(credData.clientSecret||''))}" placeholder="${credData.clientSecret==='__set__'?'••••••••':''}"/></label>
+        <label><span>Scope</span><input data-k="scope" value="${esc(credData.scope||currentPreset.scope||"")}"/></label>
+        ${currentPreset.docs ? `<p class="cred-hint">📖 <a href="${currentPreset.docs}" target="_blank" rel="noopener">Como obter estas credenciais</a></p>` : ''}
+      `;
+    } else if (t === "bearerToken") {
+      h = `<label><span>Token</span><input type="password" data-k="token" value="${esc(credData.token==='__set__'?'':(credData.token||''))}" placeholder="${credData.token==='__set__'?'••••••••':''}"/></label>`;
+    } else if (t === "apiKey") {
+      h = `<label><span>Nome do header</span><input data-k="headerName" value="${esc(credData.headerName||"X-API-Key")}"/></label>
+           <label><span>Valor da API Key</span><input type="password" data-k="apiKey" value="${esc(credData.apiKey==='__set__'?'':(credData.apiKey||''))}" placeholder="${credData.apiKey==='__set__'?'••••••••':''}"/></label>`;
+    } else if (t === "basicAuth") {
+      h = `<label><span>Usuário</span><input data-k="username" value="${esc(credData.username||"")}"/></label>
+           <label><span>Senha</span><input type="password" data-k="password" value="${esc(credData.password==='__set__'?'':(credData.password||''))}" placeholder="${credData.password==='__set__'?'••••••••':''}"/></label>`;
+    }
+    fieldsEl.innerHTML = h;
+    fieldsEl.querySelectorAll("[data-k]").forEach(inp => {
+      inp.addEventListener("input", () => { credData[inp.dataset.k] = inp.value; });
+    });
+    connectBtn.style.display = t === "oauth2" ? "" : "none";
+    testBtn.style.display = existing ? "" : "none";
+  }
+
+  presetSel.onchange = () => {
+    currentPreset = presets.find(p => p.id === presetSel.value) || null;
+    if (currentPreset && currentPreset.type === "oauth2") {
+      if (!credData.authUrl) credData.authUrl = currentPreset.authUrl;
+      if (!credData.tokenUrl) credData.tokenUrl = currentPreset.tokenUrl;
+      if (!credData.scope) credData.scope = currentPreset.scope;
+      credData.authQueryParams = currentPreset.authQueryParams || {};
+    }
+    renderFields();
   };
-  rf(); $("cType").onchange = rf;
+  if (currentPreset) renderFields();
+
   $("cSave").onclick = async () => {
-    const t = $("cType").value; let data = {};
-    if (t === "apiKey") data = { key: $("cf_key")?.value, value: $("cf_val")?.value };
-    else if (t === "basic") data = { username: $("cf_user")?.value, password: $("cf_pass")?.value };
-    else if (t === "bearer") data = { token: $("cf_token")?.value };
-    else data = { headers: $("cf_hdrs")?.value || "{}" };
-    const name = ($("cName").value || "Credencial").trim();
-    if (c) await AISStore.updateCredential(c.id, { name, type: t, data });
-    else   await AISStore.createCredential({ name, type: t, data });
-    closeModal(); renderCreds();
+    if (!currentPreset) { msgEl.textContent = "Selecione um tipo"; msgEl.className = "cred-msg err"; return; }
+    const name = ($("cName").value || currentPreset.name).trim();
+    const payload = { name, type: currentPreset.type, preset: presetSel.value, data: credData };
+    try {
+      if (existing) await AISStore.updateCredential(existing.id, payload);
+      else {
+        const created = await AISStore.createCredential(payload);
+        existing = created;
+      }
+      msgEl.textContent = "✓ Salvo"; msgEl.className = "cred-msg ok";
+      testBtn.style.display = "";
+      renderCreds();
+    } catch (e) { msgEl.textContent = "Erro: " + e.message; msgEl.className = "cred-msg err"; }
+  };
+
+  connectBtn.onclick = async () => {
+    if (!existing) { msgEl.textContent = "Salve primeiro"; msgEl.className = "cred-msg warn"; return; }
+    msgEl.textContent = "Abrindo autorização…"; msgEl.className = "cred-msg";
+    try {
+      const r = await fetch(`/api/credentials/${existing.id}/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-AIS-Token": localStorage.getItem("ais.token") || "" },
+        body: JSON.stringify({}),
+      });
+      const data = await r.json();
+      if (!data.authUrl) throw new Error(data.error || "Sem authUrl");
+      msgEl.innerHTML = `Uma janela abriu para autorização.<br><small>Registre <code>${esc(data.redirectUri)}</code> como redirect URI no provedor.</small>`;
+      const win = window.open(data.authUrl, "aisOAuth", "width=600,height=700");
+      if (!win) msgEl.textContent = "Pop-up bloqueado. Permita e tente de novo.";
+      const poll = setInterval(async () => {
+        try {
+          const c2 = await AISStore.getCredential(existing.id);
+          if (c2 && c2.connected) {
+            clearInterval(poll);
+            msgEl.textContent = "✓ Conectado!"; msgEl.className = "cred-msg ok";
+            renderCreds();
+          }
+        } catch {}
+      }, 2000);
+      setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
+    } catch (e) { msgEl.textContent = "Erro: " + e.message; msgEl.className = "cred-msg err"; }
+  };
+
+  testBtn.onclick = async () => {
+    if (!existing) return;
+    msgEl.textContent = "Testando…"; msgEl.className = "cred-msg";
+    try {
+      const r = await fetch(`/api/credentials/${existing.id}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-AIS-Token": localStorage.getItem("ais.token") || "" },
+      });
+      const data = await r.json();
+      if (data.ok) { msgEl.textContent = data.connected ? "✓ Conectada" : "⚠ Não conectada"; msgEl.className = "cred-msg " + (data.connected ? "ok" : "warn"); }
+      else { msgEl.textContent = "Erro: " + (data.error || "desconhecido"); msgEl.className = "cred-msg err"; }
+    } catch (e) { msgEl.textContent = "Erro: " + e.message; msgEl.className = "cred-msg err"; }
   };
 }
 
