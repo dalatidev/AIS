@@ -481,7 +481,27 @@ function openConfig(nodeId){
   const readonly = AIS.execViewMode;
   cfgOpen=true;
   if(!readonly) closeExecPanel();
-  // -- Params HTML --
+
+  // -- INPUT panel: nós que conectam a este --
+  const upEdges=(AIS.flow.edges||[]).filter(e=>e.to===nodeId);
+  const upNodes=upEdges.map(e=>{const n=findNode(e.from);const d=n?TYPES[n.type]:null;return n&&d?{node:n,def:d}:null;}).filter(Boolean);
+  let inputHTML='';
+  if(upNodes.length){
+    for(const{node:un,def:ud}of upNodes){
+      inputHTML+=`<div class="cfg-in-node" data-id="${un.id}">
+        <div class="cfg-in-head">
+          <div class="cfg-in-icon" style="background:${ud.color}">${ud.icon}</div>
+          <div class="cfg-in-info"><span class="cfg-in-name">${esc(un.name)}</span><span class="cfg-in-meta">Sem dados</span></div>
+          <svg class="cfg-in-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </div>
+        <pre class="cfg-in-data"></pre>
+      </div>`;
+    }
+  } else {
+    inputHTML='<div class="cfg-in-empty">Nó inicial<br><small style="opacity:.6">Sem dados de entrada</small></div>';
+  }
+
+  // -- PARAMS HTML --
   let params='';
   if(node.type==="webhook"){
     const url=AISStore.isServer()?`${location.origin}/hook/${node.config.path||"..."}`:"";
@@ -495,7 +515,8 @@ function openConfig(nodeId){
   }
   if(node.type==="set"&&node.config.mode!=="json") params+='<label class="cfg-field"><span class="cfg-label">Campos</span><div id="kvEditor"></div></label>';
   params+="</div>";
-  // -- Output HTML --
+
+  // -- OUTPUT HTML --
   let outContent;
   if(readonly){
     outContent='<div class="cfg-out-empty"><p>Modo visualização</p></div>';
@@ -505,7 +526,8 @@ function openConfig(nodeId){
       <p>Sem output</p></div>
       <button class="cfg-out-test" id="cfgTestRun">${def.trigger?'Testar gatilho':'Executar fluxo'}</button>`;
   }
-  // -- Full layout --
+
+  // -- LAYOUT COMPLETO --
   const h=`<div class="cfg-head">
     <div class="cfg-head-icon" style="background:${def.color}">${def.icon}</div>
     <input class="cfg-name" value="${esc(node.name)}" spellcheck="false" ${readonly?"disabled":""}/>
@@ -514,6 +536,13 @@ function openConfig(nodeId){
       <button class="cfg-hdr-btn" id="cfgClose" title="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div></div>
     <div class="cfg-content">
+      <div class="cfg-input-panel">
+        <div class="cfg-input-head">
+          <span class="cfg-output-label">INPUT</span>
+          <div class="cfg-output-tabs"><button class="cfg-out-tab active">JSON</button></div>
+        </div>
+        <div class="cfg-input-body" id="cfgInputBody">${inputHTML}</div>
+      </div>
       <div class="cfg-params">
         <div class="cfg-params-head"><button class="cfg-tab active">Parâmetros</button></div>
         <div class="cfg-scroll">${params}</div>
@@ -528,6 +557,10 @@ function openConfig(nodeId){
     </div>`;
   $cfgPanel.innerHTML=h; $cfgPanel.classList.add("open"); $cfgScrim.classList.add("open");
   document.getElementById("cfgClose").onclick=closeConfig; $cfgScrim.onclick=closeConfig;
+  // Toggle expandir nós de input
+  $cfgPanel.querySelectorAll(".cfg-in-head").forEach(head=>{
+    head.onclick=()=>head.parentElement.classList.toggle("expanded");
+  });
   if(!readonly){
     const nameInp=$cfgPanel.querySelector(".cfg-name");
     nameInp.addEventListener("input",()=>{node.name=nameInp.value||def.name;refreshNodeEl(node);saveLater();});
@@ -594,6 +627,7 @@ function copyUrl(){const u=document.getElementById("cfgUrl");if(!u)return;
 async function testFromConfig(nodeId){
   if(!AIS.flow)return;
   const outBody=document.getElementById("cfgOutputBody");
+  const inBody=document.getElementById("cfgInputBody");
   if(!AISStore.isServer()){
     if(outBody) outBody.innerHTML='<div class="cfg-out-empty"><p>Execução disponível apenas com servidor</p></div>';return;
   }
@@ -603,6 +637,29 @@ async function testFromConfig(nodeId){
   try{
     const r=await fetch(`/api/execute/${AIS.flow.id}`,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true})});
     const data=await r.json();
+    // -- Popular INPUT panel com outputs dos nós anteriores --
+    if(inBody&&data.steps){
+      const upEdges=(AIS.flow.edges||[]).filter(e=>e.to===nodeId);
+      for(const edge of upEdges){
+        const upStep=data.steps.find(s=>s.nodeId===edge.from);
+        const nodeEl=inBody.querySelector(`.cfg-in-node[data-id="${edge.from}"]`);
+        if(nodeEl){
+          const meta=nodeEl.querySelector(".cfg-in-meta");
+          const dataEl=nodeEl.querySelector(".cfg-in-data");
+          if(upStep&&upStep.output){
+            const isArr=Array.isArray(upStep.output);
+            const count=isArr?upStep.output.length:1;
+            if(meta) meta.textContent=`${count} item${count!==1?"s":""}`;
+            if(dataEl) dataEl.textContent=JSON.stringify(upStep.output,null,2);
+            nodeEl.classList.add("expanded");
+          } else if(upStep){
+            if(meta) meta.textContent=upStep.status==="skipped"?"Pulado":"Erro";
+            if(meta) meta.style.color=upStep.status==="skipped"?"#EAB308":"#ff5a6a";
+          }
+        }
+      }
+    }
+    // -- Popular OUTPUT panel com output deste nó --
     const step=data.steps?.find(s=>s.nodeId===nodeId);
     if(outBody){
       if(step){
