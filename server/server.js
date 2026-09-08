@@ -12,6 +12,7 @@ const http = require("http");
 const fs   = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const Credentials = require("./credentials");
 
 const ROOT = path.join(__dirname, "..");
 const DATA_DIR  = path.join(ROOT, "data");
@@ -149,6 +150,51 @@ async function handleApi(req, res, url) {
     return json(res, 200, data);
   }
 
+  // GET /api/oauth2/callback  — redirect do provedor OAuth2 (PÚBLICO, sem token)
+  // Provedor volta com ?code=...&state=...
+  if (req.method === "GET" && parts[1] === "oauth2" && parts[2] === "callback") {
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const error = url.searchParams.get("error");
+    const html = (title, msg, ok) => `<!doctype html><meta charset="utf-8"><title>${title}</title>
+      <body style="font:14px system-ui;background:#0B0F1A;color:#EAF0FA;padding:40px;text-align:center">
+        <div style="max-width:420px;margin:60px auto;padding:32px;background:#131828;border-radius:14px;border:1px solid #1F2740">
+          <div style="font-size:48px;margin-bottom:12px">${ok?"✓":"✗"}</div>
+          <h2 style="margin:0 0 8px;color:${ok?"#3ecf8e":"#ff5a6a"}">${title}</h2>
+          <p style="color:#8A98B8;margin:0 0 20px">${msg}</p>
+          <p style="font-size:12px;color:#4b5875">Você pode fechar esta janela.</p>
+        </div>
+        <script>setTimeout(()=>window.close(),3000)</script></body>`;
+    if (error) { res.writeHead(400,{"Content-Type":"text/html; charset=utf-8"}); return res.end(html("Autorização negada", error, false)); }
+    if (!code || !state) { res.writeHead(400,{"Content-Type":"text/html; charset=utf-8"}); return res.end(html("Parâmetros faltando", "code ou state ausentes", false)); }
+    const pending = Credentials.pendingAuth.get(state);
+    if (!pending) { res.writeHead(400,{"Content-Type":"text/html; charset=utf-8"}); return res.end(html("State inválido", "Autorização expirou ou é inválida", false)); }
+    Credentials.pendingAuth.delete(state);
+    const creds = readJSON(CREDS_FILE, {});
+    const c = creds[pending.credId];
+    if (!c) { res.writeHead(404,{"Content-Type":"text/html; charset=utf-8"}); return res.end(html("Credencial removida", "A credencial foi removida durante a autorização", false)); }
+    const cfg = readJSON(CONFIG_FILE, {});
+    const decrypted = { ...c, data: Credentials.decryptCredentialData(c.data, cfg.token) };
+    try {
+      const tok = await Credentials.exchangeCodeForToken(decrypted, code, pending.redirectUri);
+      const newData = {
+        ...decrypted.data,
+        accessToken: tok.access_token,
+        refreshToken: tok.refresh_token || decrypted.data.refreshToken || "",
+        expiresAt: tok.expires_in ? Date.now() + tok.expires_in * 1000 : null,
+        tokenType: tok.token_type || "Bearer",
+      };
+      creds[pending.credId].data = Credentials.encryptCredentialData(newData, cfg.token);
+      creds[pending.credId].updatedAt = Date.now();
+      writeJSON(CREDS_FILE, creds);
+      res.writeHead(200,{"Content-Type":"text/html; charset=utf-8"});
+      return res.end(html("Conectado!", `Credencial "${c.name}" pronta pra usar`, true));
+    } catch (e) {
+      res.writeHead(500,{"Content-Type":"text/html; charset=utf-8"});
+      return res.end(html("Falha na troca de token", e.message, false));
+    }
+  }
+
   // Toda a API exige token.
   if (!authOK(req)) return json(res, 401, { error: "Token inválido ou ausente." });
 
@@ -215,21 +261,98 @@ async function handleApi(req, res, url) {
 
   /* --- Credenciais --- */
   const creds = readJSON(CREDS_FILE, {});
+  // Sanitiza credencial para exposição pública (esconde valores sensíveis)
+  const SENSITIVE = new Set(["clientSecret","accessToken","refreshToken","password","apiKey","token","secret","bearerToken"]);
+  function sanitizeCred(c) {
+    const d = c.data || {};
+    const clean = {};
+    for (const [k,v] of Object.entries(d)) {
+      if (SENSITIVE.has(k)) clean[k] = v ? "__set__" : "";
+      else clean[k] = v;
+    }
+    return { ...c, data: clean, connected: c.type === "oauth2" ? !!d.accessToken : (
+      c.type === "bearerToken" ? !!d.token :
+      c.type === "apiKey" ? !!d.apiKey :
+      c.type === "basicAuth" ? !!d.username : false
+    )};
+  }
+  // GET /api/credentials/presets  → lista de presets
+  if (parts[1] === "credentials" && parts[2] === "presets" && req.method === "GET") {
+    return json(res, 200, Object.entries(Credentials.PRESETS).map(([id, p]) => ({id, ...p})));
+  }
+  // POST /api/credentials/:id/authorize → inicia OAuth2, retorna { authUrl }
+  if (parts[1] === "credentials" && parts[3] === "authorize" && req.method === "POST" && parts.length === 4) {
+    const c = creds[parts[2]];
+    if (!c) return json(res, 404, { error: "Credencial não encontrada." });
+    if (c.type !== "oauth2") return json(res, 400, { error: "Não é OAuth2." });
+    const cfg = readJSON(CONFIG_FILE, {});
+    const decrypted = { ...c, data: Credentials.decryptCredentialData(c.data, cfg.token) };
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const redirectUri = body.redirectUri || `http://${req.headers.host}/api/oauth2/callback`;
+    const state = crypto.randomBytes(16).toString("hex");
+    Credentials.pendingAuth.set(state, { credId: parts[2], redirectUri });
+    // Expira em 10min
+    setTimeout(() => Credentials.pendingAuth.delete(state), 10 * 60 * 1000);
+    const authUrl = Credentials.buildAuthorizeUrl(decrypted, redirectUri, state);
+    return json(res, 200, { authUrl, state, redirectUri });
+  }
+  // POST /api/credentials/:id/test → testa credencial (retorna connected)
+  if (parts[1] === "credentials" && parts[3] === "test" && req.method === "POST" && parts.length === 4) {
+    const c = creds[parts[2]];
+    if (!c) return json(res, 404, { error: "Credencial não encontrada." });
+    const cfg = readJSON(CONFIG_FILE, {});
+    const decrypted = { ...c, data: Credentials.decryptCredentialData(c.data, cfg.token) };
+    try {
+      const fresh = await Credentials.ensureFreshToken(decrypted, async (newData) => {
+        creds[parts[2]].data = Credentials.encryptCredentialData(newData, cfg.token);
+        creds[parts[2]].updatedAt = Date.now();
+        writeJSON(CREDS_FILE, creds);
+      });
+      return json(res, 200, { ok: true, connected: !!(fresh.data.accessToken || fresh.data.token || fresh.data.apiKey || fresh.data.username) });
+    } catch (e) {
+      return json(res, 200, { ok: false, error: e.message });
+    }
+  }
   if (parts[1] === "credentials") {
-    if (req.method === "GET" && parts.length === 2) return json(res, 200, Object.values(creds).sort((a,b) => b.updatedAt - a.updatedAt));
-    if (req.method === "GET" && parts.length === 3) { const c = creds[parts[2]]; return c ? json(res, 200, c) : json(res, 404, { error: "Credencial não encontrada." }); }
+    if (req.method === "GET" && parts.length === 2)
+      return json(res, 200, Object.values(creds).map(sanitizeCred).sort((a,b) => b.updatedAt - a.updatedAt));
+    if (req.method === "GET" && parts.length === 3) {
+      const c = creds[parts[2]]; return c ? json(res, 200, sanitizeCred(c)) : json(res, 404, { error: "Credencial não encontrada." });
+    }
     if (req.method === "POST" && parts.length === 2) {
       const body = JSON.parse((await readBody(req)) || "{}");
       const id = "cred_" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex");
       const now = Date.now();
-      creds[id] = { id, name: body.name || "Credencial", type: body.type || "apiKey", data: body.data || {}, createdAt: now, updatedAt: now };
-      writeJSON(CREDS_FILE, creds); return json(res, 201, creds[id]);
+      const cfg = readJSON(CONFIG_FILE, {});
+      creds[id] = {
+        id, name: body.name || "Credencial",
+        type: body.type || "apiKey",
+        preset: body.preset || null,
+        data: Credentials.encryptCredentialData(body.data || {}, cfg.token),
+        createdAt: now, updatedAt: now,
+      };
+      writeJSON(CREDS_FILE, creds); return json(res, 201, sanitizeCred(creds[id]));
     }
     if (req.method === "PUT" && parts.length === 3) {
       const id = parts[2]; if (!creds[id]) return json(res, 404, { error: "Credencial não encontrada." });
       const body = JSON.parse((await readBody(req)) || "{}");
-      creds[id] = { ...creds[id], ...body, id, updatedAt: Date.now() };
-      writeJSON(CREDS_FILE, creds); return json(res, 200, creds[id]);
+      const cfg = readJSON(CONFIG_FILE, {});
+      // Preservar campos sensíveis já salvos se o cliente enviou "__set__"
+      const currentDecrypted = Credentials.decryptCredentialData(creds[id].data, cfg.token);
+      const mergedData = { ...currentDecrypted };
+      for (const [k, v] of Object.entries(body.data || {})) {
+        if (SENSITIVE.has(k) && v === "__set__") continue; // manter valor atual
+        mergedData[k] = v;
+      }
+      creds[id] = {
+        ...creds[id],
+        name: body.name ?? creds[id].name,
+        type: body.type ?? creds[id].type,
+        preset: body.preset ?? creds[id].preset,
+        data: Credentials.encryptCredentialData(mergedData, cfg.token),
+        id, updatedAt: Date.now(),
+      };
+      writeJSON(CREDS_FILE, creds); return json(res, 200, sanitizeCred(creds[id]));
     }
     if (req.method === "DELETE" && parts.length === 3) {
       const id = parts[2]; if (!creds[id]) return json(res, 404, { error: "Credencial não encontrada." });
@@ -299,7 +422,7 @@ async function handleApi(req, res, url) {
       n.type === "manualTrigger" || n.type === "webhook" || n.type === "scheduleTrigger"
     ) || (flow.nodes||[])[0];
     if (!triggerNode) return json(res, 400, { error: "Nenhum nó gatilho encontrado." });
-    const engine = new Engine(flow);
+    const engine = new Engine(flow, { credentialsResolver: makeCredResolver() });
     const exec = await engine.run(
       triggerNode.id,
       body.triggerData || {},
@@ -350,6 +473,30 @@ function storeExec(flowId, exec) {
   list.unshift(exec);
   if (list.length > MAX_EXEC) list.length = MAX_EXEC;
   executions.set(flowId, list);
+}
+
+/** Resolver de credenciais: decripta + auto-refresh OAuth2, persiste renovação */
+function makeCredResolver() {
+  return async (credId) => {
+    const creds = readJSON(CREDS_FILE, {});
+    const c = creds[credId];
+    if (!c) return null;
+    const cfg = readJSON(CONFIG_FILE, {});
+    const decrypted = { ...c, data: Credentials.decryptCredentialData(c.data, cfg.token) };
+    if (c.type === "oauth2") {
+      try {
+        return await Credentials.ensureFreshToken(decrypted, async (newData) => {
+          creds[credId].data = Credentials.encryptCredentialData(newData, cfg.token);
+          creds[credId].updatedAt = Date.now();
+          writeJSON(CREDS_FILE, creds);
+        });
+      } catch (e) {
+        // Falha de refresh: retorna com dados atuais e engine lança erro no HTTP
+        return decrypted;
+      }
+    }
+    return decrypted;
+  };
 }
 
 /* ---------- Webhook hits (em memória) ---------- */
@@ -415,7 +562,7 @@ async function handleHook(req, res, url) {
 
   // Executa o fluxo a partir do nó webhook
   try {
-    const engine = new Engine(targetFlow);
+    const engine = new Engine(targetFlow, { credentialsResolver: makeCredResolver() });
     const exec = await engine.run(targetNode.id, hit);
     // Gravar snapshot do fluxo no momento da execução
     exec.snapshot = { nodes: targetFlow.nodes || [], edges: targetFlow.edges || [] };
