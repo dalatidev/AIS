@@ -900,6 +900,64 @@
     pointer-events:none;
   }
   .node-pin-badge svg { width:12px; height:12px; }
+
+  /* Credential picker (dentro do config) */
+  .cfg-cred-row { display:flex; gap:6px; align-items:center; }
+  .cfg-cred-select { flex:1; }
+  .cfg-cred-new {
+    width:42px; height:42px; border-radius:9px;
+    background:var(--surface-2); border:1px solid var(--line-soft);
+    color:var(--white); font-size:22px; font-weight:400; cursor:pointer;
+    display:grid; place-items:center;
+    transition:background .12s, border-color .12s;
+  }
+  .cfg-cred-new:hover { background:var(--surface); border-color:var(--blue); }
+  .cfg-cred-status { display:block; margin-top:4px; font-size:12px; color:var(--muted); }
+  .cfg-cred-status.ok { color:#3ecf8e; }
+  .cfg-cred-status.warn { color:#EAB308; }
+  .cfg-cred-status.err { color:#ff5a6a; }
+
+  /* Modal de credencial */
+  .cred-modal-wrap {
+    position:fixed; inset:0; z-index:1000;
+    display:grid; place-items:center;
+    animation:credFadeIn .18s;
+  }
+  @keyframes credFadeIn { from{opacity:0} to{opacity:1} }
+  .cred-modal-scrim { position:absolute; inset:0; background:rgba(5,8,16,.65); backdrop-filter:blur(3px); }
+  .cred-modal {
+    position:relative; z-index:1;
+    background:var(--bg); border:1px solid var(--line);
+    border-radius:14px;
+    width:min(520px, calc(100% - 40px));
+    max-height:calc(100% - 40px); overflow:hidden;
+    box-shadow:0 24px 64px rgba(0,0,0,.6);
+    display:flex; flex-direction:column;
+  }
+  .cred-modal-head {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 18px; border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .cred-modal-head h3 { margin:0; font-size:15px; }
+  .cred-modal-body { padding:18px; overflow-y:auto; }
+  .cred-modal-actions {
+    display:flex; gap:8px; justify-content:flex-end; margin-top:16px;
+    padding-top:14px; border-top:1px solid var(--line-soft);
+  }
+  .cred-modal-actions .btn-primary { background:var(--blue); color:#fff; }
+  .cred-modal-actions .btn-danger { color:#ff5a6a; margin-right:auto; }
+  .cred-modal-msg {
+    margin-top:10px; padding:8px 12px; border-radius:8px;
+    font-size:13px; color:var(--muted); background:var(--surface);
+    min-height:16px;
+  }
+  .cred-modal-msg.ok { color:#3ecf8e; background:rgba(62,207,142,.08); }
+  .cred-modal-msg.warn { color:#EAB308; background:rgba(234,179,8,.08); }
+  .cred-modal-msg.err { color:#ff5a6a; background:rgba(255,90,106,.08); }
+  .cred-hint { font-size:12px; color:var(--muted); margin:6px 0 12px; }
+  .cred-hint a { color:var(--blue); text-decoration:none; }
+  .cred-hint a:hover { text-decoration:underline; }
 </style>
 </head>
 <body>
