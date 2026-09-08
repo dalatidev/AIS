@@ -300,7 +300,11 @@ async function handleApi(req, res, url) {
     ) || (flow.nodes||[])[0];
     if (!triggerNode) return json(res, 400, { error: "Nenhum nó gatilho encontrado." });
     const engine = new Engine(flow);
-    const exec = await engine.run(triggerNode.id, body.triggerData || {});
+    const exec = await engine.run(
+      triggerNode.id,
+      body.triggerData || {},
+      { destinationNode: body.destinationNode || null }
+    );
     // Gravar snapshot do fluxo no momento da execução
     exec.snapshot = { nodes: flow.nodes || [], edges: flow.edges || [] };
     storeExec(id, exec);
