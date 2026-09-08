@@ -886,6 +886,20 @@
   /* Disabled node */
   .ais-node.disabled > .node-body { opacity:.4; border-style:dashed !important; }
   .ais-node.disabled > .node-port { opacity:.4; }
+
+  /* Pinned node (dados fixados) */
+  .ais-node.pinned-node > .node-body {
+    box-shadow:0 0 0 2px #F97316, 0 4px 20px -6px rgba(249,115,22,.5);
+  }
+  .node-pin-badge {
+    position:absolute; top:-8px; left:-8px; z-index:15;
+    width:22px; height:22px; border-radius:50%;
+    background:#F97316; color:#fff;
+    display:grid; place-items:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.4);
+    pointer-events:none;
+  }
+  .node-pin-badge svg { width:12px; height:12px; }
 </style>
 </head>
 <body>
@@ -1102,6 +1116,7 @@
       tags: flow.tags || [],
       status: flow.status || "draft",
       folderId: flow.folderId || null,
+      pinData: flow.pinData || {},
     });
   }
 
@@ -1441,6 +1456,7 @@
       if (flow) {
         flow.nodes = src.nodes || [];
         flow.edges = src.edges || [];
+        flow.pinData = src.pinData || {};
         await persist();
         flash("Fluxo importado");
         location.reload();
@@ -1560,6 +1576,7 @@
       document.title = flow.name + " — A.I.S.";
       if (!flow.nodes) flow.nodes = [];
       if (!flow.edges) flow.edges = [];
+      if (!flow.pinData) flow.pinData = {};
       applyStatus(flow.status || "draft");
       applyTags(flow.tags || []);
       updatePublishBtn();
