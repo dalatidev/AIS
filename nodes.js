@@ -588,17 +588,243 @@ function openConfig(nodeId){
     nameInp.addEventListener("input",()=>{node.name=nameInp.value||def.name;refreshNodeEl(node);saveLater();});
     $cfgPanel.querySelectorAll("[data-cfg]").forEach(inp=>{const k=inp.dataset.cfg;
       const handler=()=>{node.config[k]=inp.type==="number"?Number(inp.value):inp.value;refreshNodeEl(node);saveLater();
-        if(["auth","mode"].includes(k))openConfig(nodeId);
+        if(["auth","mode","authentication"].includes(k))openConfig(nodeId);
         if(k==="path"&&node.type==="webhook"){const u=document.getElementById("cfgUrl");if(u)u.textContent=`${location.origin}/hook/${node.config.path||"..."}`;}
       };inp.addEventListener("input",handler);inp.addEventListener("change",handler);
     });
     if(node.type==="set"&&node.config.mode!=="json") setupKVEditor(node);
+    // Popular selects de credencial
+    $cfgPanel.querySelectorAll("[data-cred-select]").forEach(sel=>setupCredentialPicker(sel, node));
+    $cfgPanel.querySelectorAll("[data-cred-new]").forEach(btn=>{
+      btn.onclick=()=>openCredentialModal(null, ()=>{
+        const s=btn.parentElement.querySelector("[data-cred-select]");
+        if(s) setupCredentialPicker(s, node);
+      });
+    });
     const delBtn=document.getElementById("cfgDelete"); if(delBtn)delBtn.onclick=()=>{if(confirm("Excluir este nó?"))removeNode(node.id);};
     const testBtn=document.getElementById("cfgTestRun"); if(testBtn)testBtn.onclick=()=>testFromConfig(node.id);
   }
   const copyBtn=document.getElementById("cfgCopy"); if(copyBtn)copyBtn.onclick=copyUrl;
 }
 function closeConfig(){cfgOpen=false;$cfgPanel.classList.remove("open");$cfgScrim.classList.remove("open");}
+
+/* ===== Credential picker (select + criar nova) ===== */
+async function setupCredentialPicker(select, node){
+  const currentId = node.config[select.dataset.cfg] || "";
+  const statusEl = select.parentElement.parentElement.querySelector("[data-cred-status]");
+  try{
+    const creds = await AISStore.listCredentials();
+    select.innerHTML = '<option value="">— Nenhuma —</option>' +
+      creds.map(c=>{
+        const badge = c.connected ? '' : ' ⚠';
+        return `<option value="${esc(c.id)}"${c.id===currentId?" selected":""}>${esc(c.name)}${badge}</option>`;
+      }).join("");
+    select.onchange = () => {
+      node.config[select.dataset.cfg] = select.value;
+      saveLater();
+      updateCredStatus(select.value, statusEl);
+    };
+    updateCredStatus(currentId, statusEl);
+  }catch(e){
+    select.innerHTML = '<option value="">Erro ao carregar</option>';
+  }
+}
+async function updateCredStatus(credId, el){
+  if(!el) return;
+  if(!credId){ el.textContent = ""; el.className = "cfg-cred-status"; return; }
+  try{
+    const c = await AISStore.getCredential(credId);
+    if(!c){ el.textContent = "Credencial removida"; el.className = "cfg-cred-status err"; return; }
+    if(c.connected){ el.textContent = `✓ Conectada (${c.type})`; el.className = "cfg-cred-status ok"; }
+    else{ el.textContent = `⚠ Não conectada`; el.className = "cfg-cred-status warn"; }
+  }catch{ el.textContent = ""; }
+}
+
+/* ===== Credential modal (criar / editar) ===== */
+async function openCredentialModal(credId, onSaved){
+  // Buscar presets
+  let presets=[];
+  try{
+    const r=await fetch("/api/credentials/presets",{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
+    presets=await r.json();
+  }catch{}
+  let existing=null;
+  if(credId){ try{ existing = await AISStore.getCredential(credId); }catch{} }
+
+  const modal = document.createElement("div");
+  modal.className = "cred-modal-wrap";
+  modal.innerHTML = `
+    <div class="cred-modal-scrim"></div>
+    <div class="cred-modal">
+      <div class="cred-modal-head">
+        <h3>${existing ? "Editar credencial" : "Nova credencial"}</h3>
+        <button class="cfg-hdr-btn" data-close><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="cred-modal-body">
+        <label class="cfg-field"><span class="cfg-label">Tipo</span>
+          <select class="cfg-input" id="credPreset">
+            ${!existing ? '<option value="">Selecione…</option>' : ''}
+            ${presets.map(p=>`<option value="${esc(p.id)}"${existing&&existing.preset===p.id?" selected":""}>${esc(p.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="cfg-field"><span class="cfg-label">Nome</span>
+          <input class="cfg-input" id="credName" placeholder="Ex: Minha conta Spotify" value="${existing?esc(existing.name):""}"/>
+        </label>
+        <div id="credFields"></div>
+        <div id="credActions" class="cred-modal-actions">
+          ${existing ? '<button class="btn btn-danger" id="credDelete">Excluir</button>' : ''}
+          <button class="btn" id="credSave">Salvar</button>
+          <button class="btn btn-primary" id="credConnect" style="display:none">Conectar (OAuth2)</button>
+          <button class="btn" id="credTest" style="display:none">Testar</button>
+        </div>
+        <div id="credMsg" class="cred-modal-msg"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector("[data-close]").onclick = close;
+  modal.querySelector(".cred-modal-scrim").onclick = close;
+
+  const presetSel = modal.querySelector("#credPreset");
+  const fieldsEl = modal.querySelector("#credFields");
+  const msgEl = modal.querySelector("#credMsg");
+  const connectBtn = modal.querySelector("#credConnect");
+  const testBtn = modal.querySelector("#credTest");
+  let currentPreset = null;
+  let credData = existing ? {...existing.data} : {};
+
+  function renderFields(){
+    if(!currentPreset){ fieldsEl.innerHTML = ""; connectBtn.style.display = "none"; testBtn.style.display = "none"; return; }
+    const t = currentPreset.type;
+    let html = "";
+    if(t==="oauth2"){
+      html = `
+        <label class="cfg-field"><span class="cfg-label">Auth URL</span><input class="cfg-input" data-k="authUrl" value="${esc(credData.authUrl||currentPreset.authUrl||"")}"/></label>
+        <label class="cfg-field"><span class="cfg-label">Token URL</span><input class="cfg-input" data-k="tokenUrl" value="${esc(credData.tokenUrl||currentPreset.tokenUrl||"")}"/></label>
+        <label class="cfg-field"><span class="cfg-label">Client ID</span><input class="cfg-input" data-k="clientId" value="${esc(credData.clientId||"")}"/></label>
+        <label class="cfg-field"><span class="cfg-label">Client Secret</span><input class="cfg-input" type="password" data-k="clientSecret" value="${esc(credData.clientSecret||"")}" placeholder="${credData.clientSecret==='__set__'?'••••••••':''}"/></label>
+        <label class="cfg-field"><span class="cfg-label">Scope</span><input class="cfg-input" data-k="scope" value="${esc(credData.scope||currentPreset.scope||"")}"/></label>
+        ${currentPreset.docs?`<p class="cred-hint">📖 <a href="${currentPreset.docs}" target="_blank" rel="noopener">Como obter estas credenciais</a></p>`:''}
+      `;
+    } else if(t==="bearerToken"){
+      html = `<label class="cfg-field"><span class="cfg-label">Token</span><input class="cfg-input" type="password" data-k="token" value="${esc(credData.token||"")}" placeholder="${credData.token==='__set__'?'••••••••':''}"/></label>`;
+    } else if(t==="apiKey"){
+      html = `
+        <label class="cfg-field"><span class="cfg-label">Nome do header</span><input class="cfg-input" data-k="headerName" value="${esc(credData.headerName||"X-API-Key")}" placeholder="X-API-Key"/></label>
+        <label class="cfg-field"><span class="cfg-label">Valor da API Key</span><input class="cfg-input" type="password" data-k="apiKey" value="${esc(credData.apiKey||"")}" placeholder="${credData.apiKey==='__set__'?'••••••••':''}"/></label>
+      `;
+    } else if(t==="basicAuth"){
+      html = `
+        <label class="cfg-field"><span class="cfg-label">Usuário</span><input class="cfg-input" data-k="username" value="${esc(credData.username||"")}"/></label>
+        <label class="cfg-field"><span class="cfg-label">Senha</span><input class="cfg-input" type="password" data-k="password" value="${esc(credData.password||"")}" placeholder="${credData.password==='__set__'?'••••••••':''}"/></label>
+      `;
+    }
+    fieldsEl.innerHTML = html;
+    fieldsEl.querySelectorAll("[data-k]").forEach(inp=>{
+      inp.addEventListener("input",()=>{ credData[inp.dataset.k] = inp.value; });
+    });
+    connectBtn.style.display = t==="oauth2" ? "" : "none";
+    testBtn.style.display = existing ? "" : "none";
+  }
+
+  presetSel.onchange = () => {
+    currentPreset = presets.find(p=>p.id===presetSel.value) || null;
+    if(currentPreset){
+      // Preenche URLs default se vazios
+      if(currentPreset.type==="oauth2"){
+        if(!credData.authUrl) credData.authUrl = currentPreset.authUrl;
+        if(!credData.tokenUrl) credData.tokenUrl = currentPreset.tokenUrl;
+        if(!credData.scope) credData.scope = currentPreset.scope;
+        credData.authQueryParams = currentPreset.authQueryParams || {};
+      }
+    }
+    renderFields();
+  };
+  if(existing && existing.preset){
+    presetSel.value = existing.preset;
+    currentPreset = presets.find(p=>p.id===existing.preset) || null;
+    renderFields();
+  }
+
+  // Salvar
+  modal.querySelector("#credSave").onclick = async () => {
+    if(!currentPreset){ msgEl.textContent = "Selecione um tipo"; msgEl.className = "cred-modal-msg err"; return; }
+    const name = modal.querySelector("#credName").value.trim() || currentPreset.name;
+    const payload = { name, type: currentPreset.type, preset: presetSel.value, data: credData };
+    try{
+      if(existing) await AISStore.updateCredential(existing.id, payload);
+      else{
+        const created = await AISStore.createCredential(payload);
+        existing = created;
+        credId = created.id;
+      }
+      msgEl.textContent = "✓ Salvo"; msgEl.className = "cred-modal-msg ok";
+      testBtn.style.display = "";
+      if(onSaved) onSaved();
+    }catch(e){ msgEl.textContent = "Erro: " + e.message; msgEl.className = "cred-modal-msg err"; }
+  };
+
+  // Conectar (OAuth2)
+  connectBtn.onclick = async () => {
+    if(!existing){ msgEl.textContent = "Salve primeiro"; msgEl.className = "cred-modal-msg warn"; return; }
+    msgEl.textContent = "Abrindo autorização…"; msgEl.className = "cred-modal-msg";
+    try{
+      const r = await fetch(`/api/credentials/${existing.id}/authorize`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},
+        body: JSON.stringify({})
+      });
+      const data = await r.json();
+      if(!data.authUrl) throw new Error(data.error || "Sem authUrl");
+      // Instrução do redirect URI
+      const cb = data.redirectUri;
+      msgEl.innerHTML = `Uma nova janela abriu para autorização.<br><small>Certifique-se que <code>${esc(cb)}</code> está registrado como redirect URI no provedor.</small>`;
+      const win = window.open(data.authUrl, "aisOAuth", "width=600,height=700");
+      if(!win) msgEl.textContent = "Pop-up bloqueado. Permita e tente de novo.";
+      // Polling: verifica status a cada 2s
+      const startPoll = setInterval(async () => {
+        try{
+          const c = await AISStore.getCredential(existing.id);
+          if(c && c.connected){
+            clearInterval(startPoll);
+            msgEl.textContent = "✓ Conectado!"; msgEl.className = "cred-modal-msg ok";
+            if(onSaved) onSaved();
+          }
+        }catch{}
+      }, 2000);
+      setTimeout(()=>clearInterval(startPoll), 5*60*1000);
+    }catch(e){ msgEl.textContent = "Erro: " + e.message; msgEl.className = "cred-modal-msg err"; }
+  };
+
+  // Testar
+  testBtn.onclick = async () => {
+    if(!existing) return;
+    msgEl.textContent = "Testando…"; msgEl.className = "cred-modal-msg";
+    try{
+      const r = await fetch(`/api/credentials/${existing.id}/test`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},
+      });
+      const data = await r.json();
+      if(data.ok){ msgEl.textContent = data.connected ? "✓ Conectada" : "⚠ Não conectada"; msgEl.className = "cred-modal-msg " + (data.connected?"ok":"warn"); }
+      else{ msgEl.textContent = "Erro: " + (data.error||"desconhecido"); msgEl.className = "cred-modal-msg err"; }
+    }catch(e){ msgEl.textContent = "Erro: " + e.message; msgEl.className = "cred-modal-msg err"; }
+  };
+
+  // Excluir
+  const delBtn = modal.querySelector("#credDelete");
+  if(delBtn){
+    delBtn.onclick = async () => {
+      if(!confirm("Excluir esta credencial?")) return;
+      try{
+        await AISStore.removeCredential(existing.id);
+        close();
+        if(onSaved) onSaved();
+      }catch(e){ msgEl.textContent = "Erro: " + e.message; msgEl.className = "cred-modal-msg err"; }
+    };
+  }
+}
+
 
 function renderField(f,val,readonly){
   const v=val!==undefined?val:(f.default??"");
@@ -610,6 +836,18 @@ function renderField(f,val,readonly){
   }
   if(f.type==="number")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="number" class="cfg-input" data-cfg="${f.key}" value="${v}" min="${f.min??0}" max="${f.max??999}" ${dis}/></label>`;
   if(f.type==="textarea")return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><textarea class="cfg-input cfg-textarea" data-cfg="${f.key}" rows="${f.rows||6}" placeholder="${f.placeholder||""}" ${dis}>${esc(String(v))}</textarea></label>`;
+  if(f.type==="credential"){
+    // Select dinâmico com credenciais + botão criar nova
+    return`<label class="cfg-field"><span class="cfg-label">${f.label}</span>
+      <div class="cfg-cred-row">
+        <select class="cfg-input cfg-cred-select" data-cfg="${f.key}" data-cred-select ${dis}>
+          <option value="">Carregando…</option>
+        </select>
+        <button class="cfg-cred-new" type="button" data-cred-new title="Criar credencial"${dis?" disabled":""}>+</button>
+      </div>
+      <span class="cfg-cred-status" data-cred-status></span>
+    </label>`;
+  }
   return`<label class="cfg-field"><span class="cfg-label">${f.label}</span><input type="${f.type||"text"}" class="cfg-input" data-cfg="${f.key}" value="${esc(String(v))}" placeholder="${f.placeholder||""}" ${dis}/></label>`;
 }
 function setupKVEditor(node){
