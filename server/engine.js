@@ -43,8 +43,36 @@ function buildGlobals() {
   return g;
 }
 
+/* ---------- Aplicar credencial em headers HTTP ---------- */
+function applyAuthToHeaders(cred, headers = {}) {
+  const d = cred.data || {};
+  const h = { ...headers };
+  switch (cred.type) {
+    case "bearerToken":
+      if (d.token) h["Authorization"] = `Bearer ${d.token}`;
+      break;
+    case "apiKey":
+      if (d.headerName && d.apiKey) h[d.headerName] = d.apiKey;
+      break;
+    case "basicAuth":
+      if (d.username != null) {
+        const encoded = Buffer.from(`${d.username}:${d.password || ""}`).toString("base64");
+        h["Authorization"] = `Basic ${encoded}`;
+      }
+      break;
+    case "oauth2":
+      if (d.accessToken) h["Authorization"] = `${d.tokenType || "Bearer"} ${d.accessToken}`;
+      break;
+  }
+  return h;
+}
+
 class Engine {
-  constructor(flow) {
+  /**
+   * @param {*} flow
+   * @param {*} deps { credentialsResolver: async (credId) => cred|null }
+   */
+  constructor(flow, deps = {}) {
     this.flow = flow;
     this.nodesMap = new Map((flow.nodes || []).map(n => [n.id, n]));
     this.nodesByName = new Map((flow.nodes || []).map(n => [n.name, n]));
@@ -54,6 +82,16 @@ class Engine {
     this.runData = {}; // { nodeName: items } — dados de cada nó por nome (para $node["Nome"])
     this.webhookResponse = null;
     this.stopAt = null; // partial execution
+    this.credentialsResolver = deps.credentialsResolver || null;
+    this._credCache = new Map();
+  }
+
+  async _getCred(credId) {
+    if (!credId || !this.credentialsResolver) return null;
+    if (this._credCache.has(credId)) return this._credCache.get(credId);
+    const cred = await this.credentialsResolver(credId);
+    this._credCache.set(credId, cred);
+    return cred;
   }
 
   /**
@@ -181,15 +219,22 @@ class Engine {
   /* ---------- Nós ---------- */
 
   async _http(c, node, items) {
-    // Executa por item (padrão n8n)
+    // Resolve credencial se configurada
+    let credAuth = null;
+    if (c.credentialId) {
+      const cred = await this._getCred(c.credentialId);
+      if (!cred) throw new Error("Credencial não encontrada");
+      credAuth = cred; // {type, data}
+    }
     const results = [];
     for (let i = 0; i < items.length; i++) {
       const ctx = this._ctx(node, items, i);
       const url = this._interp(c.url || "", ctx);
       if (!url) throw new Error("URL vazia");
       const method = c.method || "GET";
-      const hdrs = {};
+      let hdrs = {};
       try { Object.assign(hdrs, JSON.parse(this._interp(c.headers || "{}", ctx))); } catch {}
+      if (credAuth) hdrs = applyAuthToHeaders(credAuth, hdrs);
       if (!hdrs["Content-Type"]) hdrs["Content-Type"] = "application/json";
       let body;
       if (["POST", "PUT", "PATCH"].includes(method) && c.body) body = this._interp(c.body, ctx);
