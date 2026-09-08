@@ -6,9 +6,14 @@ AISNodes.register({
   fields:[
     {key:"method",label:"Método",type:"select",options:["GET","POST","PUT","DELETE","PATCH"]},
     {key:"url",label:"URL",type:"text",placeholder:"https://api.exemplo.com/dados"},
-    {key:"headers",label:"Headers (JSON)",type:"textarea",placeholder:'{"Authorization": "Bearer {{$input.token}}"}',rows:3},
-    {key:"body",label:"Corpo (JSON)",type:"textarea",placeholder:'{"nome": "{{$input.nome}}"}',rows:4},
+    {key:"authentication",label:"Autenticação",type:"select",options:[
+      {value:"none",label:"Nenhuma"},
+      {value:"credential",label:"Credencial"},
+    ]},
+    {key:"credentialId",label:"Credencial",type:"credential",showIf:{authentication:"credential"}},
+    {key:"headers",label:"Headers (JSON)",type:"textarea",placeholder:'{"X-Custom": "valor"}',rows:3},
+    {key:"body",label:"Corpo (JSON)",type:"textarea",placeholder:'{"nome": "{{ $json.nome }}"}',rows:4},
     {key:"timeout",label:"Timeout (segundos)",type:"number",min:1,max:300},
   ],
-  defaults:{method:"GET",url:"",headers:"{}",body:"",timeout:30}
+  defaults:{method:"GET",url:"",authentication:"none",credentialId:"",headers:"{}",body:"",timeout:30}
 });
