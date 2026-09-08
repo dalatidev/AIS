@@ -117,7 +117,12 @@ class Engine {
   }
 
   _code(c, input) {
-    const box = { input, result:null, console:{log:()=>{}} };
+    const box = { input, $input:input, result:null,
+      console:{log:()=>{},warn:()=>{},error:()=>{}},
+      JSON,Math,String,Number,Boolean,Array,Object,Date,RegExp,
+      parseInt,parseFloat,isNaN,isFinite,
+      encodeURIComponent,decodeURIComponent,
+      setTimeout:undefined,setInterval:undefined };
     try { vm.runInNewContext(c.code||"result = input;", box, {timeout:5000}); }
     catch(e){ throw new Error("Código: "+e.message); }
     return box.result!==null? box.result : input;
@@ -138,14 +143,28 @@ class Engine {
 
   _interp(str, data) {
     return String(str).replace(/\{\{(.+?)\}\}/g, (_,expr)=>{
-      try{return String(this._resolve(expr.trim(),data))??"";} catch{return"";}
+      try{
+        const t=expr.trim();
+        // Fast path: simples $input.dot.path
+        if(/^\$input(\.[a-zA-Z_]\w*)*$/.test(t)) return String(this._resolve(t,data))??"";
+        // JS expression sandbox (suporta JSON.stringify, operadores, etc.)
+        const sandbox={$input:data,input:data,JSON,Math,String,Number,Boolean,Array,Object,Date,
+          parseInt,parseFloat,isNaN,isFinite,encodeURIComponent,decodeURIComponent,undefined,null:null};
+        return String(vm.runInNewContext(t,sandbox,{timeout:1000}))??"";
+      } catch{return"";}
     });
   }
   _resolve(expr, data) {
     if(expr==="$input") return data;
     if(expr.startsWith("$input.")) expr=expr.slice(7);
-    let v=data; for(const p of expr.split(".")){ if(v==null)return undefined; v=v[p]; }
-    return v;
+    // Tenta dot-path primeiro
+    if(/^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(expr)){
+      let v=data; for(const p of expr.split(".")){ if(v==null)return undefined; v=v[p]; } return v;
+    }
+    // Fallback: avalia como expressão JS
+    const sandbox={$input:data,input:data,JSON,Math,String,Number,Boolean,Array,Object,Date,
+      parseInt,parseFloat,isNaN,isFinite,undefined,null:null};
+    try{return vm.runInNewContext(expr,sandbox,{timeout:1000});}catch{return undefined;}
   }
   _safe(obj) {
     try{ const s=JSON.stringify(obj); return s.length>50000?{_truncated:true,preview:s.slice(0,500)}:JSON.parse(s); }
