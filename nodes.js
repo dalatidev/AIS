@@ -475,42 +475,57 @@ function setupCanvasDeselect(){
   });
 }
 
-/* ===== Config Panel ===== */
+/* ===== Config Panel (n8n-style modal) ===== */
 function openConfig(nodeId){
   const node=findNode(nodeId);if(!node)return;const def=TYPES[node.type];if(!def)return;
   const readonly = AIS.execViewMode;
   cfgOpen=true;
   if(!readonly) closeExecPanel();
-  let h=`<div class="cfg-head"><div class="cfg-head-icon" style="background:${def.color}">${def.icon}</div>
-    <input class="cfg-name" value="${esc(node.name)}" spellcheck="false" ${readonly?"disabled":""}/>
-    <button class="cfg-close" id="cfgClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-  </div><div class="cfg-scroll">`;
-  // Webhook URL
+  // -- Params HTML --
+  let params='';
   if(node.type==="webhook"){
     const url=AISStore.isServer()?`${location.origin}/hook/${node.config.path||"..."}`:"";
-    h+=`<div class="cfg-sec"><div class="cfg-sec-label">Webhook URL</div>
+    params+=`<div class="cfg-sec"><div class="cfg-sec-label">Webhook URL</div>
       <div class="cfg-url">${url?`<code id="cfgUrl">${esc(url)}</code><button class="cfg-url-copy" id="cfgCopy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`:'<span class="cfg-url-note">Disponível apenas com servidor</span>'}</div></div>`;
   }
-  // Fields
-  h+='<div class="cfg-sec"><div class="cfg-sec-label">Configurações</div>';
+  params+='<div class="cfg-sec"><div class="cfg-sec-label">Configurações</div>';
   for(const f of def.fields){
     if(f.showIf){const[k,v]=Object.entries(f.showIf)[0];if(node.config[k]!==v)continue;}
-    h+=renderField(f,node.config[f.key],readonly);
+    params+=renderField(f,node.config[f.key],readonly);
   }
-  // KV editor for Set manual mode
-  if(node.type==="set"&&node.config.mode!=="json") h+='<label class="cfg-field"><span class="cfg-label">Campos</span><div id="kvEditor"></div></label>';
-  h+="</div>";
-  // Test (webhook) - hide in readonly
-  if(!readonly && node.type==="webhook"&&AISStore.isServer()){
-    h+=`<div class="cfg-sec"><div class="cfg-sec-label">Testar</div>
-      <button class="btn cfg-test-btn" id="cfgTestBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>Verificar dados</button>
-      <div class="cfg-test-data" id="cfgTestData">Nenhum dado recebido ainda.</div></div>`;
+  if(node.type==="set"&&node.config.mode!=="json") params+='<label class="cfg-field"><span class="cfg-label">Campos</span><div id="kvEditor"></div></label>';
+  params+="</div>";
+  // -- Output HTML --
+  let outContent;
+  if(readonly){
+    outContent='<div class="cfg-out-empty"><p>Modo visualização</p></div>';
+  } else {
+    outContent=`<div class="cfg-out-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      <p>Sem output</p></div>
+      <button class="cfg-out-test" id="cfgTestRun">${def.trigger?'Testar gatilho':'Executar fluxo'}</button>`;
   }
-  // Delete - hide in readonly
-  if(!readonly){
-    h+=`<div class="cfg-sec cfg-sec-danger"><button class="btn cfg-delete" id="cfgDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Excluir nó</button></div>`;
-  }
-  h+="</div>";
+  // -- Full layout --
+  const h=`<div class="cfg-head">
+    <div class="cfg-head-icon" style="background:${def.color}">${def.icon}</div>
+    <input class="cfg-name" value="${esc(node.name)}" spellcheck="false" ${readonly?"disabled":""}/>
+    <div class="cfg-head-actions">
+      ${readonly?'':`<button class="cfg-hdr-btn danger" id="cfgDelete" title="Excluir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>`}
+      <button class="cfg-hdr-btn" id="cfgClose" title="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div></div>
+    <div class="cfg-content">
+      <div class="cfg-params">
+        <div class="cfg-params-head"><button class="cfg-tab active">Parâmetros</button></div>
+        <div class="cfg-scroll">${params}</div>
+      </div>
+      <div class="cfg-output">
+        <div class="cfg-output-head">
+          <span class="cfg-output-label">OUTPUT</span>
+          <div class="cfg-output-tabs"><button class="cfg-out-tab active">JSON</button></div>
+        </div>
+        <div class="cfg-output-body" id="cfgOutputBody">${outContent}</div>
+      </div>
+    </div>`;
   $cfgPanel.innerHTML=h; $cfgPanel.classList.add("open"); $cfgScrim.classList.add("open");
   document.getElementById("cfgClose").onclick=closeConfig; $cfgScrim.onclick=closeConfig;
   if(!readonly){
@@ -523,8 +538,8 @@ function openConfig(nodeId){
       };inp.addEventListener("input",handler);inp.addEventListener("change",handler);
     });
     if(node.type==="set"&&node.config.mode!=="json") setupKVEditor(node);
-    const testBtn=document.getElementById("cfgTestBtn"); if(testBtn)testBtn.onclick=()=>testWebhook(node);
-    document.getElementById("cfgDelete").onclick=()=>{if(confirm("Excluir este nó?"))removeNode(node.id);};
+    const delBtn=document.getElementById("cfgDelete"); if(delBtn)delBtn.onclick=()=>{if(confirm("Excluir este nó?"))removeNode(node.id);};
+    const testBtn=document.getElementById("cfgTestRun"); if(testBtn)testBtn.onclick=()=>testFromConfig(node.id);
   }
   const copyBtn=document.getElementById("cfgCopy"); if(copyBtn)copyBtn.onclick=copyUrl;
 }
@@ -573,6 +588,40 @@ async function testWebhook(node){
 function copyUrl(){const u=document.getElementById("cfgUrl");if(!u)return;
   navigator.clipboard.writeText(u.textContent).catch(()=>{});
   const b=document.getElementById("cfgCopy");if(b){b.style.color="#3ecf8e";setTimeout(()=>b.style.color="",800);}
+}
+
+/* ===== Test from Config (output panel) ===== */
+async function testFromConfig(nodeId){
+  if(!AIS.flow)return;
+  const outBody=document.getElementById("cfgOutputBody");
+  if(!AISStore.isServer()){
+    if(outBody) outBody.innerHTML='<div class="cfg-out-empty"><p>Execução disponível apenas com servidor</p></div>';return;
+  }
+  const trigger=AIS.flow.nodes.find(n=>TYPES[n.type]?.trigger);
+  if(!trigger){if(outBody)outBody.innerHTML='<div class="cfg-out-empty"><p>Adicione um gatilho ao fluxo</p></div>';return;}
+  if(outBody) outBody.innerHTML='<div class="cfg-out-empty"><div class="cfg-out-spinner"></div><p>Executando…</p></div>';
+  try{
+    const r=await fetch(`/api/execute/${AIS.flow.id}`,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true})});
+    const data=await r.json();
+    const step=data.steps?.find(s=>s.nodeId===nodeId);
+    if(outBody){
+      if(step){
+        const ok=step.status==="success";
+        const label=ok?'<span style="color:#3ecf8e">✓ Sucesso</span>':'<span style="color:#ff5a6a">✗ Erro</span>';
+        const jsonStr=JSON.stringify(step.output,null,2)||"null";
+        outBody.innerHTML=`<div class="cfg-out-result">
+          <div class="cfg-out-status">${label}${step.error?" — "+esc(step.error):""}</div>
+          <pre>${esc(jsonStr)}</pre></div>`;
+      } else if(data.error){
+        outBody.innerHTML=`<div class="cfg-out-empty"><p style="color:#ff5a6a">${esc(data.error)}</p></div>`;
+      } else {
+        outBody.innerHTML='<div class="cfg-out-empty"><p>Nó não alcançado na execução</p></div>';
+      }
+    }
+    await loadExecList();
+  }catch(e){
+    if(outBody) outBody.innerHTML=`<div class="cfg-out-empty"><p style="color:#ff5a6a">Erro: ${esc(e.message)}</p></div>`;
+  }
 }
 
 /* ===== Node Toolbar Actions ===== */
@@ -812,6 +861,6 @@ function setupKeys(){
 /* ===== Export ===== */
 // Mantém register já exposto e adiciona os métodos internos.
 Object.assign(window.AISNodes, {init,TYPES,addNode:addNodeToCenter,removeNode,openConfig,closeConfig,
-  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,highlightExec,loadExecList,runFlow,
+  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,testFromConfig,highlightExec,loadExecList,runFlow,
   undo,redo,autoLayout,toggleDisable,duplicateNode,pasteNode,selectMultiple,deselectAll});
 })();
