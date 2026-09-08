@@ -182,9 +182,11 @@ function renderNode(node){
   if(node.disabled) el.classList.add("disabled");
   el.style.transform=`translate(${node.x}px,${node.y}px)`;
   const hasIf=node.type==="if";
+  const isPinned=!!(AIS.flow?.pinData&&AIS.flow.pinData[node.name]);
+  if(isPinned) el.classList.add("pinned-node");
   el.innerHTML=`
     <div class="node-toolbar">
-      <button class="ntb" data-act="run" title="Executar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></svg></button>
+      <button class="ntb" data-act="run" title="Executar até aqui"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 14 9-14 9V3z"/></svg></button>
       <button class="ntb${node.disabled?' active-toggle':''}" data-act="toggle" title="${node.disabled?'Ativar':'Desativar'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg></button>
       <button class="ntb ntb-danger" data-act="del" title="Excluir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
       <div class="ntb-more-wrap">
@@ -193,11 +195,15 @@ function renderNode(node){
           <button data-act="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Renomear</button>
           <button data-act="replace"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>Substituir</button>
           <div class="nm-sep"></div>
+          <button data-act="pin">${isPinned
+            ?`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20"/><path d="M12 17v5"/><path d="M9.5 6.5 12 9l-1.5 2.5"/><path d="M5 12h7"/></svg>Remover pin`
+            :`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>Fixar dados`}</button>
           <button data-act="copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar</button>
           <button data-act="dup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1"/></svg>Duplicar</button>
         </div>
       </div>
     </div>
+    ${isPinned?'<div class="node-pin-badge" title="Dados fixados"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 4v5l3 3H5l3-3V4h8m0-2H8a2 2 0 0 0-2 2v5l-3 3v2h6v7l1 1 1-1v-7h6v-2l-3-3V4a2 2 0 0 0-2-2z"/></svg></div>':''}
     ${def.trigger?"":'<div class="node-port port-in" data-port="in"></div>'}
     <div class="node-body">
       <div class="node-icon" style="background:${def.color}">${def.icon}</div>
@@ -225,7 +231,7 @@ function renderNode(node){
     btn.addEventListener("click",e=>{
       e.stopPropagation();
       const act=btn.dataset.act;
-      if(act==="run") runFlow();
+      if(act==="run") runFlowUntil(node.id);
       else if(act==="toggle") toggleDisable(node.id);
       else if(act==="del"){ if(confirm("Excluir este nó?")) removeNode(node.id); }
       else if(act==="more"){
@@ -246,6 +252,7 @@ function renderNode(node){
       else if(act==="replace") startReplace(node.id);
       else if(act==="copy") copyNode(node.id);
       else if(act==="dup") duplicateNode(node.id);
+      else if(act==="pin") togglePin(node.id);
     });
   });
   $world.appendChild(el);
@@ -267,8 +274,23 @@ function getSubtitle(n){
 }
 function refreshNodeEl(node){
   const el=$world.querySelector(`.ais-node[data-id="${node.id}"]`);
-  if(!el)return; el.querySelector(".node-name").textContent=node.name;
+  if(!el)return;
+  el.querySelector(".node-name").textContent=node.name;
   el.querySelector(".node-desc").innerHTML=getSubtitle(node);
+  // Re-render se pin state mudou
+  const isPinned=!!(AIS.flow?.pinData&&AIS.flow.pinData[node.name]);
+  const hasBadge=!!el.querySelector(".node-pin-badge");
+  if(isPinned!==hasBadge){
+    // Re-render completo do nó
+    const wasSelected=el.classList.contains("selected");
+    el.remove();
+    renderNode(node);
+    if(wasSelected){
+      const nEl=$world.querySelector(`.ais-node[data-id="${node.id}"]`);
+      if(nEl) nEl.classList.add("selected");
+    }
+    renderEdges();
+  }
 }
 
 /* ===== Drag (group-aware) ===== */
@@ -524,7 +546,7 @@ function openConfig(nodeId){
     outContent=`<div class="cfg-out-empty">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
       <p>Sem output</p></div>
-      <button class="cfg-out-test" id="cfgTestRun">${def.trigger?'Testar gatilho':'Executar fluxo'}</button>`;
+      <button class="cfg-out-test" id="cfgTestRun">${def.trigger?'Testar gatilho':'Executar até aqui'}</button>`;
   }
 
   // -- LAYOUT COMPLETO --
@@ -635,7 +657,7 @@ async function testFromConfig(nodeId){
   if(!trigger){if(outBody)outBody.innerHTML='<div class="cfg-out-empty"><p>Adicione um gatilho ao fluxo</p></div>';return;}
   if(outBody) outBody.innerHTML='<div class="cfg-out-empty"><div class="cfg-out-spinner"></div><p>Executando…</p></div>';
   try{
-    const r=await fetch(`/api/execute/${AIS.flow.id}`,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true})});
+    const r=await fetch(`/api/execute/${AIS.flow.id}`,{method:"POST",headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},body:JSON.stringify({force:true, destinationNode:nodeId})});
     const data=await r.json();
     // -- Popular INPUT panel com outputs dos nós anteriores --
     if(inBody&&data.steps){
@@ -895,6 +917,61 @@ async function runFlow(){
   }catch(e){alert("Erro: "+e.message);}
 }
 
+/* ===== Partial execution (executar até este nó) ===== */
+async function runFlowUntil(nodeId){
+  if(!AISStore.isServer()){ alert("Execução requer o servidor (Termux)."); return; }
+  try{
+    const r=await fetch("/api/execute/"+AIS.flow.id,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-AIS-Token":localStorage.getItem("ais.token")||""},
+      body:JSON.stringify({force:true, destinationNode:nodeId})
+    });
+    const exec=await r.json();
+    highlightExec(exec);
+    if(execPanelOpen) loadExecList();
+    return exec;
+  }catch(e){alert("Erro: "+e.message);}
+}
+
+/* ===== Pin / Unpin data ===== */
+async function togglePin(nodeId){
+  const node=findNode(nodeId); if(!node||!AIS.flow) return;
+  AIS.flow.pinData = AIS.flow.pinData || {};
+  const isPinned = !!AIS.flow.pinData[node.name];
+  if(isPinned){
+    delete AIS.flow.pinData[node.name];
+    save();
+    refreshNodeEl(node);
+    return;
+  }
+  // Pinar: usa o último output do nó, se houver, senão pede input
+  let last = null;
+  try{
+    if(AISStore.isServer()){
+      const r=await fetch(`/api/executions/${AIS.flow.id}`,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
+      const list = await r.json();
+      if(Array.isArray(list) && list.length){
+        const r2=await fetch(`/api/executions/${AIS.flow.id}/${list[0].id}`,{headers:{"X-AIS-Token":localStorage.getItem("ais.token")||""}});
+        const exec=await r2.json();
+        const step=(exec.steps||[]).find(s=>s.nodeId===nodeId);
+        if(step && step.output) last=step.output;
+      }
+    }
+  }catch{}
+  if(!last){
+    const txt = prompt(`Cole o JSON dos dados a fixar para "${node.name}":\n\nEx: [{"json": {"nome": "teste"}}] ou {"nome":"teste"}`, '{"json":{"exemplo":"dado fixo"}}');
+    if(!txt) return;
+    try{ last = JSON.parse(txt); }
+    catch(e){ alert("JSON inválido: "+e.message); return; }
+  }
+  // Normaliza para array de items
+  if(!Array.isArray(last)) last = [{json: (last && typeof last==="object" && !("json" in last)) ? last : (last.json?last:{json:last})}];
+  else if(last.length && !("json" in (last[0]||{}))) last = last.map(v=>({json:v}));
+  AIS.flow.pinData[node.name] = last;
+  save();
+  refreshNodeEl(node);
+}
+
 function highlightExec(exec){
   $world.querySelectorAll(".ais-node").forEach(n=>n.classList.remove("exec-success","exec-error"));
   for(const s of(exec.steps||[])){
@@ -918,6 +995,6 @@ function setupKeys(){
 /* ===== Export ===== */
 // Mantém register já exposto e adiciona os métodos internos.
 Object.assign(window.AISNodes, {init,TYPES,addNode:addNodeToCenter,removeNode,openConfig,closeConfig,
-  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,testFromConfig,highlightExec,loadExecList,runFlow,
-  undo,redo,autoLayout,toggleDisable,duplicateNode,pasteNode,selectMultiple,deselectAll});
+  openExecPanel,closeExecPanel,renderEdges,copyUrl,testWebhook,testFromConfig,highlightExec,loadExecList,runFlow,runFlowUntil,
+  undo,redo,autoLayout,toggleDisable,duplicateNode,pasteNode,selectMultiple,deselectAll,togglePin});
 })();
